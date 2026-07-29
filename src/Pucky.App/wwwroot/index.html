@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Pucky · Steam Controller</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" aria-label="Pucky">
+      <span class="brand-mark" aria-hidden="true"><i></i></span>
+      <span>PUCKY</span>
+    </div>
+    <div class="connection">
+      <span id="connection-dot" class="dot"></span>
+      <span>
+        <strong id="connection-label">Starting controller service</strong>
+        <small id="connection-detail">Connecting to 127.0.0.1</small>
+      </span>
+    </div>
+    <button id="power" class="power" type="button" aria-pressed="true">
+      <span class="power-icon">⏻</span>
+      <span id="power-label">Mapping on</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="workspace">
+      <article class="panel controller-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="kicker">LIVE INPUT</p>
+            <h1>Steam Controller</h1>
+          </div>
+          <div class="heading-status">
+            <span id="transport-badge" class="badge">WAITING</span>
+            <small id="report-rate">0 reports received</small>
+          </div>
+        </div>
+
+        <div class="controller-stage">
+          <img src="/assets/steam-controller.avif"
+               alt="Steam Controller"
+               class="controller-photo"
+               draggable="false">
+          <div id="stick-l" class="axis-marker stick-marker left" data-button="LeftStick" aria-label="Left stick">
+            <i></i><b data-touch-button="LeftStickTouch"></b>
+          </div>
+          <div id="stick-r" class="axis-marker stick-marker right" data-button="RightStick" aria-label="Right stick">
+            <i></i><b data-touch-button="RightStickTouch"></b>
+          </div>
+          <div id="pad-l" class="axis-marker pad-marker left" data-button="LeftPadClick" aria-label="Left trackpad"><i></i></div>
+          <div id="pad-r" class="axis-marker pad-marker right" data-button="RightPadClick" aria-label="Right trackpad"><i></i></div>
+
+          <span class="button-marker shoulder left-bumper" data-button="LeftBumper">LB</span>
+          <span class="button-marker shoulder right-bumper" data-button="RightBumper">RB</span>
+          <span class="button-marker trigger-button left-trigger" data-button="LeftTriggerFull">LT</span>
+          <span class="button-marker trigger-button right-trigger" data-button="RightTriggerFull">RT</span>
+
+          <span class="button-marker dpad-up" data-button="DPadUp">▲</span>
+          <span class="button-marker dpad-left" data-button="DPadLeft">◀</span>
+          <span class="button-marker dpad-right" data-button="DPadRight">▶</span>
+          <span class="button-marker dpad-down" data-button="DPadDown">▼</span>
+          <span class="button-marker button-y" data-button="Y">Y</span>
+          <span class="button-marker button-x" data-button="X">X</span>
+          <span class="button-marker button-b" data-button="B">B</span>
+          <span class="button-marker button-a" data-button="A">A</span>
+
+          <span class="button-marker center-button button-view" data-button="View">VIEW</span>
+          <span class="button-marker center-button button-steam" data-button="Steam">STEAM</span>
+          <span class="button-marker center-button button-menu" data-button="Menu">MENU</span>
+          <span class="button-marker center-button button-qam" data-button="QuickAccess">•••</span>
+
+          <span class="button-marker grip-button grip-l4" data-button="L4">L4</span>
+          <span class="button-marker grip-button grip-l5" data-button="L5">L5</span>
+          <span class="button-marker grip-button grip-r4" data-button="R4">R4</span>
+          <span class="button-marker grip-button grip-r5" data-button="R5">R5</span>
+          <span class="button-marker grip-sense grip-touch-left" data-button="LeftGripTouch">GRIP</span>
+          <span class="button-marker grip-sense grip-touch-right" data-button="RightGripTouch">GRIP</span>
+        </div>
+
+        <div class="telemetry">
+          <div>
+            <span>LEFT TRIGGER</span>
+            <i><b id="trigger-l"></b></i>
+            <strong id="trigger-l-value">0%</strong>
+          </div>
+          <div>
+            <span>RIGHT TRIGGER</span>
+            <i><b id="trigger-r"></b></i>
+            <strong id="trigger-r-value">0%</strong>
+          </div>
+        </div>
+        <div id="button-list" class="button-list" aria-label="Pressed buttons">
+          <span>No input</span>
+        </div>
+      </article>
+
+      <aside class="sidebar">
+        <article class="panel status-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="kicker">SYSTEM BRIDGE</p>
+              <h2>Output</h2>
+            </div>
+            <span id="bridge-state" class="bridge-state">OFFLINE</span>
+          </div>
+          <div class="route">
+            <div>
+              <span class="route-icon">SC</span>
+              <small>RAW HID</small>
+              <strong id="device-name">Steam Controller</strong>
+            </div>
+            <i class="route-line"></i>
+            <div>
+              <span class="route-icon output-icon">X</span>
+              <small>VIRTUAL GAMEPAD</small>
+              <strong id="output-name">Initializing</strong>
+            </div>
+          </div>
+          <dl class="system-details">
+            <div><dt>INPUT</dt><dd id="input-link">Not connected</dd></div>
+            <div><dt>BATTERY</dt><dd id="battery">—</dd></div>
+            <div><dt>GAMEPAD</dt><dd id="gamepad-link">Offline</dd></div>
+            <div><dt>POINTER</dt><dd id="desktop-link">Initializing</dd></div>
+            <div><dt>VIBRATION</dt><dd id="vibration-state">Ready</dd></div>
+          </dl>
+          <button id="test-vibration" class="secondary full" type="button">
+            Test controller vibration
+          </button>
+          <button id="test-haptics" class="secondary full compact-action" type="button">
+            Test trackpad haptics
+          </button>
+          <div id="output-error" class="notice hidden"></div>
+        </article>
+
+        <article class="panel profile-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="kicker">ACTIVE PROFILE</p>
+              <h2 id="active-profile">Desktop Gamepad</h2>
+            </div>
+            <select id="profile-select" aria-label="Profile"></select>
+          </div>
+
+          <div class="settings">
+            <label>
+              <span>Left stick deadzone <output id="left-deadzone-value">12%</output></span>
+              <input id="left-deadzone" type="range" min="0" max="0.4" step="0.01">
+            </label>
+            <label>
+              <span>Right stick deadzone <output id="right-deadzone-value">12%</output></span>
+              <input id="right-deadzone" type="range" min="0" max="0.4" step="0.01">
+            </label>
+            <div class="setting-pair">
+              <label>
+                <span>Left pad</span>
+                <select id="left-pad-mode">
+                  <option>Disabled</option><option>Joystick</option><option>Mouse</option>
+                  <option>DPad</option><option>Scroll</option>
+                </select>
+              </label>
+              <label>
+                <span>Right pad</span>
+                <select id="right-pad-mode">
+                  <option>Disabled</option><option>Joystick</option><option>Mouse</option>
+                  <option>DPad</option><option>Scroll</option>
+                </select>
+              </label>
+            </div>
+            <div class="setting-pair sensitivity-row">
+              <label>
+                <span>Left sensitivity <output id="left-pad-sensitivity-value">1.0×</output></span>
+                <input id="left-pad-sensitivity" type="range" min="0.1" max="4" step="0.1">
+              </label>
+              <label>
+                <span>Right sensitivity <output id="right-pad-sensitivity-value">1.2×</output></span>
+                <input id="right-pad-sensitivity" type="range" min="0.1" max="4" step="0.1">
+              </label>
+            </div>
+            <div class="setting-pair haptic-row">
+              <label class="toggle-setting">
+                <span>Left pad haptics</span>
+                <input id="left-pad-haptics" type="checkbox">
+              </label>
+              <label class="toggle-setting">
+                <span>Right pad haptics</span>
+                <input id="right-pad-haptics" type="checkbox">
+              </label>
+              <label>
+                <span>Left haptic strength <output id="left-haptic-value">65%</output></span>
+                <input id="left-haptic-intensity" type="range" min="0" max="1" step="0.05">
+              </label>
+              <label>
+                <span>Right haptic strength <output id="right-haptic-value">65%</output></span>
+                <input id="right-haptic-intensity" type="range" min="0" max="1" step="0.05">
+              </label>
+            </div>
+            <div class="setting-pair">
+              <label>
+                <span>Gyro behavior</span>
+                <select id="gyro-mode">
+                  <option>Disabled</option><option>RightStick</option><option>Mouse</option>
+                </select>
+              </label>
+              <label>
+                <span>Gyro sensitivity <output id="gyro-sensitivity-value">1.8×</output></span>
+                <input id="gyro-sensitivity" type="range" min="0.1" max="5" step="0.1">
+              </label>
+            </div>
+          </div>
+          <div class="profile-footer">
+            <span id="save-result" role="status"></span>
+            <button id="save-profile" class="primary" type="button">Save profile</button>
+          </div>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <footer>
+    <span>PUCKY 0.2.0</span>
+    <span>LOCAL ONLY · NO STEAM · NO TELEMETRY</span>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>

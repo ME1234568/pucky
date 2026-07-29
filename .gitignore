@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+.vscode/
+artifacts/
+.dotnet-home/
+.nuget/
+.appdata/
+.localappdata/
+*.user
+*.log
+src/Pucky.App/data/

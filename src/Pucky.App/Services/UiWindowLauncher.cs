@@ -90,7 +90,7 @@ public sealed class UiWindowLauncher(
                 var start = new ProcessStartInfo
                 {
                     FileName = browser,
-                    UseShellExecute = true,
+                    UseShellExecute = false,
                     WindowStyle = ProcessWindowStyle.Normal
                 };
                 start.ArgumentList.Add($"--app={windowUrl}");

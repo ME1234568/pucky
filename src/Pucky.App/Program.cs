@@ -7,7 +7,11 @@ using Pucky.App.Profiles;
 using Pucky.App.Services;
 using Pucky.Core.Mapping;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
 builder.WebHost.UseUrls(
     builder.Configuration["PUCKY_URL"] ?? "http://127.0.0.1:27182");
 builder.Services.ConfigureHttpJsonOptions(options =>

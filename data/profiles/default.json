@@ -1,0 +1,50 @@
+{
+  "id": "default",
+  "name": "Desktop Gamepad",
+  "leftStickDeadzone": 0.12,
+  "rightStickDeadzone": 0.12,
+  "leftPad": {
+    "mode": "DPad",
+    "sensitivity": 1,
+    "deadzone": 0.08,
+    "clickRequired": false,
+    "hapticsEnabled": true,
+    "hapticIntensity": 0.65
+  },
+  "rightPad": {
+    "mode": "Mouse",
+    "sensitivity": 1.2,
+    "deadzone": 0.08,
+    "clickRequired": false,
+    "hapticsEnabled": true,
+    "hapticIntensity": 0.65
+  },
+  "gyro": {
+    "mode": "Disabled",
+    "sensitivity": 1.8,
+    "deadzone": 0.02,
+    "enableButton": "RightStickTouch"
+  },
+  "buttonMappings": {
+    "A": "A",
+    "B": "B",
+    "X": "X",
+    "Y": "Y",
+    "LeftBumper": "LeftBumper",
+    "RightBumper": "RightBumper",
+    "View": "Back",
+    "Menu": "Start",
+    "Steam": "Guide",
+    "LeftStick": "LeftStick",
+    "RightStick": "RightStick",
+    "DPadUp": "DPadUp",
+    "DPadDown": "DPadDown",
+    "DPadLeft": "DPadLeft",
+    "DPadRight": "DPadRight",
+    "L4": "LeftStick",
+    "L5": "Back",
+    "R4": "RightStick",
+    "R5": "Start"
+  },
+  "layers": []
+}

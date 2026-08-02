@@ -18,7 +18,7 @@ public enum SteamButton : ulong
     DPadRight = 1UL << 11,
     DPadLeft = 1UL << 12,
     DPadUp = 1UL << 13,
-    Menu = 1UL << 14,
+    View = 1UL << 14,
     LeftStick = 1UL << 15,
     Steam = 1UL << 16,
     L4 = 1UL << 17,

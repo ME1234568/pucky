@@ -2,10 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Entitlements for a normally signed CoreCLR apphost. -->
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <!-- This restricted entitlement belongs only on the native helper. -->
+    <key>com.apple.developer.hid.virtual.device</key>
     <true/>
 </dict>
 </plist>

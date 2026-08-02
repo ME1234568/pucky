@@ -3,62 +3,14 @@ using System.Buffers.Binary;
 namespace Pucky.Core.Mapping;
 
 /// <summary>
-/// Encodes the compact HID report used by Pucky's macOS virtual gamepad.
-/// The layout is compatible with the conventional Razer Serval mapping used
-/// by SDL: 11 buttons, a hat switch, four stick axes, and two trigger axes.
+/// Encodes the compact input report consumed by Pucky's native macOS HID
+/// helper. The layout is compatible with the conventional Razer Serval
+/// mapping used by SDL: 11 buttons, a hat switch, four stick axes, and two
+/// trigger axes.
 /// </summary>
 public static class MacHidGamepadReport
 {
     public const int Length = 15;
-
-    // This descriptor was constructed from the USB HID Usage Tables. It does
-    // not contain report IDs: every submitted packet is one 15-byte input
-    // report matching the fields below.
-    private static readonly byte[] ReportDescriptorBytes =
-    [
-        0x05, 0x01,       // Usage Page (Generic Desktop)
-        0x09, 0x05,       // Usage (Game Pad)
-        0xA1, 0x01,       // Collection (Application)
-        0x05, 0x09,       //   Usage Page (Button)
-        0x19, 0x01,       //   Usage Minimum (Button 1)
-        0x29, 0x0B,       //   Usage Maximum (Button 11)
-        0x15, 0x00,       //   Logical Minimum (0)
-        0x25, 0x01,       //   Logical Maximum (1)
-        0x75, 0x01,       //   Report Size (1)
-        0x95, 0x0B,       //   Report Count (11)
-        0x81, 0x02,       //   Input (Data, Variable, Absolute)
-        0x75, 0x01,       //   Report Size (1)
-        0x95, 0x05,       //   Report Count (5)
-        0x81, 0x03,       //   Input (Constant)
-        0x05, 0x01,       //   Usage Page (Generic Desktop)
-        0x09, 0x39,       //   Usage (Hat Switch)
-        0x15, 0x00,       //   Logical Minimum (0)
-        0x25, 0x07,       //   Logical Maximum (7)
-        0x35, 0x00,       //   Physical Minimum (0)
-        0x46, 0x3B, 0x01, //   Physical Maximum (315)
-        0x65, 0x14,       //   Unit (Degrees)
-        0x75, 0x04,       //   Report Size (4)
-        0x95, 0x01,       //   Report Count (1)
-        0x81, 0x42,       //   Input (Data, Variable, Absolute, Null State)
-        0x65, 0x00,       //   Unit (None)
-        0x75, 0x04,       //   Report Size (4)
-        0x95, 0x01,       //   Report Count (1)
-        0x81, 0x03,       //   Input (Constant)
-        0x09, 0x30,       //   Usage (X: left stick X)
-        0x09, 0x31,       //   Usage (Y: left stick Y)
-        0x09, 0x32,       //   Usage (Z: right stick X)
-        0x09, 0x33,       //   Usage (Rx: right stick Y)
-        0x09, 0x34,       //   Usage (Ry: right trigger)
-        0x09, 0x35,       //   Usage (Rz: left trigger)
-        0x16, 0x00, 0x80, //   Logical Minimum (-32768)
-        0x26, 0xFF, 0x7F, //   Logical Maximum (32767)
-        0x75, 0x10,       //   Report Size (16)
-        0x95, 0x06,       //   Report Count (6)
-        0x81, 0x02,       //   Input (Data, Variable, Absolute)
-        0xC0              // End Collection
-    ];
-
-    public static ReadOnlySpan<byte> ReportDescriptor => ReportDescriptorBytes;
 
     public static byte[] Encode(VirtualGamepadState state)
     {

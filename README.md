@@ -39,17 +39,17 @@ telemetry.
 | Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
 | macOS | Yes | Experimental HID gamepad | Yes | Direct test/output path |
 
-Pucky's macOS gamepad backend publishes an `IOHIDUserDevice` with a compact
-Razer Serval-compatible HID layout. This compatibility target is recognized by
-Steam, SDL, and Wine/CrossOver, but compatibility with raw-HID consumers and
-Apple's GameController framework varies by macOS release. The current backend
-is input-only, so game-driven rumble is not yet available; Pucky's direct
-vibration test still works.
+Pucky's macOS backend streams compact Razer Serval-compatible reports to a
+small native helper, which publishes the `IOHIDUserDevice`. Isolating the
+helper keeps the restricted entitlement off the CoreCLR process. This
+compatibility target is recognized by Steam, SDL, and Wine/CrossOver, but
+compatibility with raw-HID consumers and Apple's GameController framework
+varies by macOS release. The current backend is input-only, so game-driven
+rumble is not yet available; Pucky's direct vibration test still works.
 
 Creating the device requires the restricted
-`com.apple.developer.hid.virtual.device` entitlement. Ordinary unsigned builds
-continue to provide raw input and pointer output and report the gamepad as
-unavailable instead of invoking the restricted API.
+`com.apple.developer.hid.virtual.device` entitlement. It is applied only to
+`pucky-hid-helper`; the main Pucky process never invokes the restricted API.
 
 Firmware updates and Puck pairing remain firmware-management operations. Do
 those once with Steam or Valve's supported tooling; normal Pucky use does not
@@ -104,27 +104,36 @@ Linux/macOS:
 
 ### macOS virtual gamepad signing
 
-For a normal-security Mac, use a signing identity whose App ID Apple has
-authorized for the HID Virtual Device capability:
+For a normal-security Mac, the native helper needs an Apple-authorized HID
+Virtual Device capability, a matching provisioning profile, and appropriate
+app-bundle packaging. A paid account or signing certificate alone does not
+authorize the entitlement. The build script can sign the components with an
+authorized identity, but it does not create or embed that Apple-issued profile:
 
 ```sh
 PUCKY_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   ./scripts/build.sh osx-arm64
 ```
 
-For local development only, an ad-hoc signature can embed the entitlement:
+For local development without a developer account, build while SIP and AMFI
+are still enabled:
 
 ```sh
 PUCKY_CODESIGN_IDENTITY=- ./scripts/build.sh osx-arm64
 ```
 
-An ad-hoc signature is not authorization. It only permits gamepad creation on
-a development Mac where the owner has already changed the boot security policy
-to relax AMFI entitlement enforcement. Pucky does not make that change and
-does not recommend weakening AMFI or SIP on a general-use Mac. Re-enable normal
-security after testing. Builds without either an authorized signature or an
-explicitly security-relaxed development environment retain all non-gamepad
-macOS functionality.
+This produces an unsigned `pucky` CoreCLR host and an ad-hoc-signed
+`pucky-hid-helper` carrying the restricted entitlement. Only after the build
+finishes, boot the development Mac with SIP and AMFI enforcement relaxed and
+run `artifacts/osx-arm64/pucky`. Building first matters: on some Apple Silicon
+systems, disabling SIP prevents the signed `dotnet` SDK itself from creating
+CoreCLR.
+
+An ad-hoc signature is not authorization. Pucky does not change the Mac's boot
+security policy and does not recommend weakening AMFI or SIP on a general-use
+Mac. Re-enable normal security after testing. When security is restored, this
+development artifact should no longer be expected to launch or create the HID
+device; rebuild a normal unsigned/no-HID artifact for ordinary Pucky use.
 
 Outputs go to `artifacts/<runtime>/`. Builds are self-contained and do not
 require users to install .NET.

@@ -21,10 +21,13 @@ public sealed record MappingResult(VirtualGamepadState Gamepad, DesktopState Des
 
 public sealed class MappingEngine
 {
-    private Axis2 _lastLeftPad;
-    private Axis2 _lastRightPad;
-    private bool _hadLeftTouch;
-    private bool _hadRightTouch;
+    private const float MouseScale = 36f;
+    private const float MouseVelocityBlend = 0.65f;
+    private const float MouseGlideFriction = 8f;
+    private const float MouseGlideStopSpeed = 5f;
+    private const float MouseMaxGlideSpeed = 5000f;
+    private PadMotion _leftPadMotion;
+    private PadMotion _rightPadMotion;
 
     public MappingResult Map(ControllerState input, MappingProfile profile)
     {
@@ -40,8 +43,8 @@ public sealed class MappingEngine
             ref rightStick,
             ref buttons,
             ref desktop,
-            ref _lastLeftPad,
-            ref _hadLeftTouch);
+            input.ReceivedAt,
+            ref _leftPadMotion);
 
         ApplyPad(
             input.RightPad,
@@ -50,8 +53,8 @@ public sealed class MappingEngine
             ref rightStick,
             ref buttons,
             ref desktop,
-            ref _lastRightPad,
-            ref _hadRightTouch);
+            input.ReceivedAt,
+            ref _rightPadMotion);
 
         ApplyGyro(input, profile.Gyro, ref rightStick, ref desktop);
 
@@ -65,12 +68,26 @@ public sealed class MappingEngine
             desktop);
     }
 
+    public DesktopState ContinueDesktopMotion(
+        DateTimeOffset timestamp,
+        MappingProfile profile)
+    {
+        var desktop = new DesktopState(0, 0, 0, 0, false, false);
+        if (profile.LeftPad.Mode == PadMode.Mouse)
+        {
+            ApplyMouseGlide(timestamp, ref desktop, ref _leftPadMotion);
+        }
+        if (profile.RightPad.Mode == PadMode.Mouse)
+        {
+            ApplyMouseGlide(timestamp, ref desktop, ref _rightPadMotion);
+        }
+        return desktop;
+    }
+
     public void Reset()
     {
-        _lastLeftPad = Axis2.Zero;
-        _lastRightPad = Axis2.Zero;
-        _hadLeftTouch = false;
-        _hadRightTouch = false;
+        _leftPadMotion = default;
+        _rightPadMotion = default;
     }
 
     public static Axis2 ApplyRadialDeadzone(Axis2 value, float deadzone)
@@ -130,13 +147,22 @@ public sealed class MappingEngine
         ref Axis2 rightStick,
         ref VirtualButton buttons,
         ref DesktopState desktop,
-        ref Axis2 lastPosition,
-        ref bool hadTouch)
+        DateTimeOffset timestamp,
+        ref PadMotion motion)
     {
         var active = pad.Touched && (!settings.ClickRequired || pad.Clicked);
+        if (settings.Mode == PadMode.Mouse)
+        {
+            ApplyMousePad(pad, settings, active, timestamp, ref desktop, ref motion);
+            return;
+        }
+
+        motion.Velocity = Axis2.Zero;
+        motion.Gliding = false;
         if (!active)
         {
-            hadTouch = false;
+            motion.HadTouch = false;
+            motion.LastUpdate = timestamp;
             return;
         }
 
@@ -150,26 +176,15 @@ public sealed class MappingEngine
             case PadMode.Joystick:
                 rightStick = value;
                 break;
-            case PadMode.Mouse:
-            {
-                var delta = hadTouch
-                    ? new Axis2(pad.Position.X - lastPosition.X, pad.Position.Y - lastPosition.Y)
-                    : Axis2.Zero;
-                desktop = desktop with
-                {
-                    MouseX = desktop.MouseX + (delta.X * settings.Sensitivity * 36f),
-                    MouseY = desktop.MouseY + (delta.Y * settings.Sensitivity * 36f),
-                    LeftClick = desktop.LeftClick || pad.Clicked
-                };
-                break;
-            }
             case PadMode.DPad:
                 buttons |= ToDPad(value);
                 break;
             case PadMode.Scroll:
             {
-                var delta = hadTouch
-                    ? new Axis2(pad.Position.X - lastPosition.X, pad.Position.Y - lastPosition.Y)
+                var delta = motion.HadTouch
+                    ? new Axis2(
+                        pad.Position.X - motion.LastPosition.X,
+                        pad.Position.Y - motion.LastPosition.Y)
                     : Axis2.Zero;
                 desktop = desktop with
                 {
@@ -183,8 +198,138 @@ public sealed class MappingEngine
                 break;
         }
 
-        lastPosition = pad.Position;
-        hadTouch = true;
+        motion.LastPosition = pad.Position;
+        motion.LastUpdate = timestamp;
+        motion.HadTouch = true;
+    }
+
+    private static void ApplyMousePad(
+        TrackpadState pad,
+        PadSettings settings,
+        bool active,
+        DateTimeOffset timestamp,
+        ref DesktopState desktop,
+        ref PadMotion motion)
+    {
+        var elapsed = ElapsedSeconds(motion.LastUpdate, timestamp);
+        if (active)
+        {
+            var delta = motion.HadTouch
+                ? new Axis2(
+                    pad.Position.X - motion.LastPosition.X,
+                    pad.Position.Y - motion.LastPosition.Y)
+                : Axis2.Zero;
+            var movement = new Axis2(
+                delta.X * settings.Sensitivity * MouseScale,
+                delta.Y * settings.Sensitivity * MouseScale);
+
+            if (motion.HadTouch && elapsed > 0)
+            {
+                var instantaneous = ClampLength(
+                    new Axis2(movement.X / elapsed, movement.Y / elapsed),
+                    MouseMaxGlideSpeed);
+                motion.Velocity = motion.Velocity.Length == 0
+                    ? instantaneous
+                    : new Axis2(
+                        (motion.Velocity.X * (1 - MouseVelocityBlend)) +
+                        (instantaneous.X * MouseVelocityBlend),
+                        (motion.Velocity.Y * (1 - MouseVelocityBlend)) +
+                        (instantaneous.Y * MouseVelocityBlend));
+            }
+            else
+            {
+                motion.Velocity = Axis2.Zero;
+            }
+
+            desktop = desktop with
+            {
+                MouseX = desktop.MouseX + movement.X,
+                MouseY = desktop.MouseY + movement.Y,
+                LeftClick = desktop.LeftClick || pad.Clicked
+            };
+            motion.LastPosition = pad.Position;
+            motion.LastUpdate = timestamp;
+            motion.HadTouch = true;
+            motion.Gliding = false;
+            return;
+        }
+
+        var released = motion.HadTouch && !pad.Touched;
+        motion.HadTouch = false;
+        if (pad.Touched)
+        {
+            motion.Velocity = Axis2.Zero;
+            motion.Gliding = false;
+            motion.LastUpdate = timestamp;
+            return;
+        }
+        if (released)
+        {
+            motion.Gliding = motion.Velocity.Length >= MouseGlideStopSpeed;
+        }
+        if (!motion.Gliding)
+        {
+            motion.Velocity = Axis2.Zero;
+            motion.LastUpdate = timestamp;
+            return;
+        }
+
+        ApplyMouseGlide(timestamp, ref desktop, ref motion);
+    }
+
+    private static void ApplyMouseGlide(
+        DateTimeOffset timestamp,
+        ref DesktopState desktop,
+        ref PadMotion motion)
+    {
+        if (!motion.Gliding)
+        {
+            return;
+        }
+
+        var elapsed = ElapsedSeconds(motion.LastUpdate, timestamp);
+        if (elapsed <= 0)
+        {
+            return;
+        }
+
+        desktop = desktop with
+        {
+            MouseX = desktop.MouseX + (motion.Velocity.X * elapsed),
+            MouseY = desktop.MouseY + (motion.Velocity.Y * elapsed)
+        };
+        var decay = MathF.Exp(-MouseGlideFriction * elapsed);
+        motion.Velocity = new Axis2(
+            motion.Velocity.X * decay,
+            motion.Velocity.Y * decay);
+        if (motion.Velocity.Length < MouseGlideStopSpeed)
+        {
+            motion.Velocity = Axis2.Zero;
+            motion.Gliding = false;
+        }
+        motion.LastUpdate = timestamp;
+    }
+
+    private static float ElapsedSeconds(DateTimeOffset previous, DateTimeOffset current)
+    {
+        if (previous == default || current <= previous)
+        {
+            return 0;
+        }
+
+        return Math.Clamp((float)(current - previous).TotalSeconds, 0.001f, 0.1f);
+    }
+
+    private static Axis2 ClampLength(Axis2 value, float maximum)
+    {
+        var length = value.Length;
+        if (length <= maximum || length == 0)
+        {
+            return value;
+        }
+
+        var scale = maximum / length;
+        return new Axis2(value.X * scale, value.Y * scale);
     }
 
     private static VirtualButton ToDPad(Axis2 value)
@@ -231,4 +376,13 @@ public sealed class MappingEngine
 
     private static Axis2 ClampAxis(Axis2 value) =>
         new(Math.Clamp(value.X, -1, 1), Math.Clamp(value.Y, -1, 1));
+
+    private struct PadMotion
+    {
+        public Axis2 LastPosition;
+        public Axis2 Velocity;
+        public DateTimeOffset LastUpdate;
+        public bool HadTouch;
+        public bool Gliding;
+    }
 }

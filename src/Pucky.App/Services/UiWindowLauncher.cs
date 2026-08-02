@@ -75,9 +75,8 @@ public sealed class UiWindowLauncher(
 
     internal static ManagedBrowserWindow? OpenAppWindow(string url, ILogger logger)
     {
-        var windowUrl = url.Contains('?', StringComparison.Ordinal)
-            ? $"{url}&puckyWindow=1"
-            : $"{url}?puckyWindow=1";
+        var separator = url.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        var windowUrl = $"{url}{separator}puckyWindow=1&launch={Environment.ProcessId}";
         var profileDirectory = Path.Combine(
             Path.GetTempPath(),
             "Pucky",

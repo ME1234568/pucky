@@ -105,12 +105,12 @@ public sealed class ControllerService(
 
         var left = transport.SendTrackpadHapticPulse(
             TrackpadHapticSide.Left,
-            1600,
+            1360,
             900,
             2);
         var right = transport.SendTrackpadHapticPulse(
             TrackpadHapticSide.Right,
-            1600,
+            1360,
             900,
             2);
         return left && right;
@@ -159,6 +159,10 @@ public sealed class ControllerService(
             var count = transport.Read(report);
             if (count <= 0)
             {
+                _desktop.Submit(
+                    _mapping.ContinueDesktopMotion(
+                        DateTimeOffset.UtcNow,
+                        profiles.Active));
                 await Task.Yield();
                 continue;
             }

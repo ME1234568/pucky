@@ -177,16 +177,17 @@ function renderMotion() {
   approach(state.display.leftPad, state.target.leftPad, 0.5);
   approach(state.display.rightPad, state.target.rightPad, 0.5);
 
-  setMotion($("#stick-l i"), state.display.leftStick, 12, true);
-  setMotion($("#stick-r i"), state.display.rightStick, 12, true);
-  setMotion($("#pad-l i"), state.display.leftPad, 27, false);
-  setMotion($("#pad-r i"), state.display.rightPad, 27, false);
+  setMotion($("#stick-l i"), state.display.leftStick, true);
+  setMotion($("#stick-r i"), state.display.rightStick, true);
+  setMotion($("#pad-l i"), state.display.leftPad, false);
+  setMotion($("#pad-r i"), state.display.rightPad, false);
   requestAnimationFrame(renderMotion);
 }
 
-function setMotion(element, value, scale, invertY) {
-  const y = (invertY ? -value.y : value.y) * scale;
-  element.style.transform = `translate3d(${value.x * scale}px, ${y}px, 0)`;
+function setMotion(element, value, invertY) {
+  const travel = Math.max(0, (element.parentElement.clientWidth - element.offsetWidth) / 2 - 3);
+  const y = (invertY ? -value.y : value.y) * travel;
+  element.style.transform = `translate3d(${value.x * travel}px, ${y}px, 0)`;
 }
 
 function updateReportRate(connected) {

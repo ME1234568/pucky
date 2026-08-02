@@ -45,6 +45,13 @@ builder.Services.AddHostedService<UiWindowLauncher>();
 var app = builder.Build();
 var liveJson = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 liveJson.Converters.Add(new JsonStringEnumConverter());
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    context.Response.Headers.Pragma = "no-cache";
+    context.Response.Headers.Expires = "0";
+    await next(context);
+});
 app.UseDefaultFiles();
 var contentTypes = new FileExtensionContentTypeProvider();
 contentTypes.Mappings[".avif"] = "image/avif";

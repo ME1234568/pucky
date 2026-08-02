@@ -7,6 +7,8 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
 {
     private bool _leftDown;
     private bool _rightDown;
+    private float _mouseXRemainder;
+    private float _mouseYRemainder;
 
     public string Name => "Windows SendInput";
     public bool IsAvailable => true;
@@ -25,6 +27,13 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
             _rightDown = state.RightClick;
         }
 
+        _mouseXRemainder += state.MouseX;
+        _mouseYRemainder += state.MouseY;
+        var x = (int)MathF.Truncate(_mouseXRemainder);
+        var y = (int)MathF.Truncate(_mouseYRemainder);
+        _mouseXRemainder -= x;
+        _mouseYRemainder -= y;
+
         var input = new Input
         {
             Type = 0,
@@ -32,8 +41,8 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
             {
                 Mouse = new MouseInput
                 {
-                    Dx = (int)Math.Round(state.MouseX),
-                    Dy = (int)Math.Round(state.MouseY),
+                    Dx = x,
+                    Dy = y,
                     Flags = flags
                 }
             }

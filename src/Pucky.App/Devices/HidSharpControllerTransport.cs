@@ -43,6 +43,7 @@ public sealed class HidSharpControllerTransport(
                         stream.Dispose();
                         continue;
                     }
+                    stream.ReadTimeout = 16;
                     _hidDevice = candidate;
                     _stream = stream;
                     _featureReportLength = Math.Max(candidate.GetMaxFeatureReportLength(), 64);

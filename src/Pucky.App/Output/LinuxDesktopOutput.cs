@@ -26,6 +26,8 @@ internal sealed class LinuxDesktopOutput : IDesktopOutput
     private FileStream? _stream;
     private bool _leftDown;
     private bool _rightDown;
+    private float _mouseXRemainder;
+    private float _mouseYRemainder;
     private float _wheelRemainder;
     private float _horizontalWheelRemainder;
 
@@ -73,8 +75,12 @@ internal sealed class LinuxDesktopOutput : IDesktopOutput
             return;
         }
 
-        var x = (int)MathF.Round(state.MouseX);
-        var y = (int)MathF.Round(state.MouseY);
+        _mouseXRemainder += state.MouseX;
+        _mouseYRemainder += state.MouseY;
+        var x = (int)MathF.Truncate(_mouseXRemainder);
+        var y = (int)MathF.Truncate(_mouseYRemainder);
+        _mouseXRemainder -= x;
+        _mouseYRemainder -= y;
         _wheelRemainder += state.ScrollY;
         _horizontalWheelRemainder += state.ScrollX;
         var wheel = (int)MathF.Truncate(_wheelRemainder);

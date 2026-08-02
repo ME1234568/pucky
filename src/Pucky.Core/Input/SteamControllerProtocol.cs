@@ -76,7 +76,7 @@ public static class SteamControllerProtocol
         Add(ref buttons, b0, 0x08, SteamButton.Y);
         Add(ref buttons, b0, 0x10, SteamButton.QuickAccess);
         Add(ref buttons, b0, 0x20, SteamButton.RightStick);
-        Add(ref buttons, b0, 0x40, SteamButton.View);
+        Add(ref buttons, b0, 0x40, SteamButton.Menu);
         Add(ref buttons, b0, 0x80, SteamButton.R4);
 
         Add(ref buttons, b1, 0x01, SteamButton.R5);
@@ -85,7 +85,7 @@ public static class SteamControllerProtocol
         Add(ref buttons, b1, 0x08, SteamButton.DPadRight);
         Add(ref buttons, b1, 0x10, SteamButton.DPadLeft);
         Add(ref buttons, b1, 0x20, SteamButton.DPadUp);
-        Add(ref buttons, b1, 0x40, SteamButton.Menu);
+        Add(ref buttons, b1, 0x40, SteamButton.View);
         Add(ref buttons, b1, 0x80, SteamButton.LeftStick);
 
         Add(ref buttons, b2, 0x01, SteamButton.Steam);

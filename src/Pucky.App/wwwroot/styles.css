@@ -210,8 +210,8 @@ main { padding: 20px; }
 }
 
 .controller-stage {
-  width: min(820px, 98%);
-  aspect-ratio: 3.5;
+  width: min(720px, 98%);
+  aspect-ratio: 3 / 2;
   margin: 44px auto 38px;
   position: relative;
   display: grid;
@@ -262,9 +262,9 @@ main { padding: 20px; }
   will-change: transform;
 }
 
-.stick-marker { width: 7.4%; aspect-ratio: 1; top: 25%; }
-.stick-marker.left { left: 36.1%; }
-.stick-marker.right { right: 36.1%; }
+.stick-marker { width: 11.7%; aspect-ratio: 1; top: 16.3%; }
+.stick-marker.left { left: 30.2%; }
+.stick-marker.right { right: 30.2%; }
 .stick-marker.active {
   border-color: var(--accent);
   box-shadow: 0 0 15px rgba(242, 163, 58, .45);
@@ -281,9 +281,9 @@ main { padding: 20px; }
   opacity: 1;
   box-shadow: 0 0 9px rgba(131, 220, 128, .7);
 }
-.pad-marker { width: 11.2%; aspect-ratio: 1; top: 53%; border-radius: 18%; }
-.pad-marker.left { left: 31.2%; }
-.pad-marker.right { right: 31.2%; }
+.pad-marker { width: 21%; aspect-ratio: 1; top: 38.3%; border-radius: 18%; }
+.pad-marker.left { left: 21.8%; }
+.pad-marker.right { right: 21.8%; }
 .pad-marker i { opacity: 0; }
 .pad-marker.touched {
   border-color: rgba(242, 163, 58, .72);
@@ -321,36 +321,36 @@ main { padding: 20px; }
   transform: translate(-50%, -50%) scale(1.14);
 }
 
-.shoulder { width: 10%; border-radius: 999px; top: 5%; }
-.left-bumper { left: 25%; }
-.right-bumper { left: 75%; }
+.shoulder { width: 18%; border-radius: 999px; top: 2.5%; }
+.left-bumper { left: 27%; }
+.right-bumper { left: 73%; }
 .trigger-button { top: -4%; }
-.left-trigger { left: 17%; }
-.right-trigger { left: 83%; }
+.left-trigger { left: 14%; }
+.right-trigger { left: 86%; }
 
-.dpad-up { left: 25.2%; top: 24%; }
-.dpad-left { left: 22.5%; top: 37%; }
-.dpad-right { left: 27.9%; top: 37%; }
-.dpad-down { left: 25.2%; top: 50%; }
-.button-y { left: 74.8%; top: 24%; }
-.button-x { left: 72.1%; top: 37%; }
-.button-b { left: 77.5%; top: 37%; }
-.button-a { left: 74.8%; top: 50%; }
+.dpad-up { left: 20.6%; top: 13.5%; }
+.dpad-left { left: 17.2%; top: 19.1%; }
+.dpad-right { left: 24.5%; top: 19.1%; }
+.dpad-down { left: 20.6%; top: 24.8%; }
+.button-y { left: 78.3%; top: 11.2%; }
+.button-x { left: 72.9%; top: 17.4%; }
+.button-b { left: 83.8%; top: 18.3%; }
+.button-a { left: 78.3%; top: 26.2%; }
 
 .center-button { min-width: 29px; height: 16px; border-radius: 999px; font-size: 5px; }
-.button-view { left: 46.3%; top: 17%; }
-.button-menu { left: 53.7%; top: 17%; }
-.button-steam { left: 50%; top: 32%; min-width: 34px; }
-.button-qam { left: 50%; top: 48%; min-width: 25px; }
+.button-view { left: 33.3%; top: 9.1%; }
+.button-menu { left: 66.3%; top: 9.1%; }
+.button-steam { left: 49.8%; top: 18.1%; min-width: 34px; }
+.button-qam { left: 49.8%; top: 54.4%; min-width: 25px; }
 
 .grip-button { border-radius: 5px; min-width: 24px; color: rgba(245, 242, 235, .2); }
-.grip-l4 { left: 17%; top: 68%; }
-.grip-l5 { left: 21%; top: 82%; }
-.grip-r4 { left: 83%; top: 68%; }
-.grip-r5 { left: 79%; top: 82%; }
-.grip-sense { min-width: 31px; border-radius: 999px; top: 91%; }
-.grip-touch-left { left: 13%; }
-.grip-touch-right { left: 87%; }
+.grip-l4 { left: 14%; top: 62%; }
+.grip-l5 { left: 19%; top: 76%; }
+.grip-r4 { left: 86%; top: 62%; }
+.grip-r5 { left: 81%; top: 76%; }
+.grip-sense { min-width: 31px; border-radius: 999px; top: 86%; }
+.grip-touch-left { left: 10%; }
+.grip-touch-right { left: 90%; }
 
 .telemetry {
   display: grid;

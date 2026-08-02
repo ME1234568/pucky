@@ -17,6 +17,7 @@ var tests = new (string Name, Action Run)[]
     ("applies radial deadzones", ApplyDeadzone),
     ("glides the cursor after a trackpad swipe", GlideTrackpadMouse),
     ("maps buttons and action layers", MapLayer),
+    ("maps all four rear buttons", MapRearButtons),
     ("maps the trackpad to a D-pad", MapTrackpadDPad)
 };
 
@@ -340,6 +341,32 @@ static void MapLayer()
     var mapped = new MappingEngine().Map(state, profile);
     Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.Y));
     Equal(false, mapped.Gamepad.Buttons.HasFlag(VirtualButton.A));
+}
+
+static void MapRearButtons()
+{
+    var profile = MappingProfile.Default() with
+    {
+        ButtonMappings = new(MappingProfile.Default().ButtonMappings)
+        {
+            [SteamButton.L4] = VirtualButton.A,
+            [SteamButton.L5] = VirtualButton.Y,
+            [SteamButton.R4] = VirtualButton.Back,
+            [SteamButton.R5] = VirtualButton.Start
+        }
+    };
+    var state = new ControllerState
+    {
+        Buttons = SteamButton.L4 | SteamButton.L5 | SteamButton.R4 | SteamButton.R5
+    };
+    var mapped = new MappingEngine().Map(state, profile);
+
+    Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.A));
+    Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.Y));
+    Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.Back));
+    Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.Start));
+    Equal(false, mapped.Gamepad.Buttons.HasFlag(VirtualButton.LeftStick));
+    Equal(false, mapped.Gamepad.Buttons.HasFlag(VirtualButton.RightStick));
 }
 
 static void MapTrackpadDPad()

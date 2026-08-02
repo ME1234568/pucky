@@ -504,6 +504,33 @@ label > span {
 label output { color: var(--ink); white-space: nowrap; }
 label select { width: 100%; }
 .setting-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.rear-mapping-section {
+  margin-top: 20px;
+  padding-top: 17px;
+  border-top: 1px solid var(--line);
+}
+.settings-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.settings-heading small {
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 500;
+}
+.rear-mapping-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+.rear-mapping-grid label { margin-top: 13px; }
 .haptic-row { grid-template-rows: auto auto; }
 .toggle-setting {
   display: flex;

@@ -54,8 +54,8 @@ public sealed class WindowsVigemOutput(
 
         SetButton(controller, Xbox360Button.A, state.Buttons, VirtualButton.A);
         SetButton(controller, Xbox360Button.B, state.Buttons, VirtualButton.B);
-        SetButton(controller, Xbox360Button.X, state.Buttons, VirtualButton.X);
-        SetButton(controller, Xbox360Button.Y, state.Buttons, VirtualButton.Y);
+        SetButton(controller, Xbox360Button.X, state.Buttons, VirtualButton.Y);
+        SetButton(controller, Xbox360Button.Y, state.Buttons, VirtualButton.X);
         SetButton(controller, Xbox360Button.LeftShoulder, state.Buttons, VirtualButton.LeftBumper);
         SetButton(controller, Xbox360Button.RightShoulder, state.Buttons, VirtualButton.RightBumper);
         SetButton(controller, Xbox360Button.Back, state.Buttons, VirtualButton.Back);

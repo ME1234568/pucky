@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Pucky.Core.Mapping;
 
 namespace Pucky.App.Output;
@@ -95,7 +96,6 @@ internal sealed class LinuxDesktopOutput : IDesktopOutput
         WriteButton(BtnLeft, state.LeftClick, ref _leftDown);
         WriteButton(BtnRight, state.RightClick, ref _rightDown);
         WriteEvent(EvSyn, SynReport, 0);
-        _stream.Flush();
     }
 
     private void WriteButton(ushort code, bool down, ref bool previous)
@@ -111,11 +111,15 @@ internal sealed class LinuxDesktopOutput : IDesktopOutput
 
     private void WriteEvent(ushort type, ushort code, int value)
     {
-        Span<byte> buffer = stackalloc byte[24];
-        BitConverter.TryWriteBytes(buffer[16..18], type);
-        BitConverter.TryWriteBytes(buffer[18..20], code);
-        BitConverter.TryWriteBytes(buffer[20..24], value);
-        _stream!.Write(buffer);
+        var buffer = new byte[24];
+        BitConverter.TryWriteBytes(buffer.AsSpan(16, 2), type);
+        BitConverter.TryWriteBytes(buffer.AsSpan(18, 2), code);
+        BitConverter.TryWriteBytes(buffer.AsSpan(20, 4), value);
+        if (write(_stream!.SafeFileHandle, buffer, (nuint)buffer.Length) != buffer.Length)
+        {
+            throw new IOException(
+                $"uinput event write failed: {Marshal.GetLastPInvokeError()}");
+        }
     }
 
     private static void Enable(int handle, uint request, ushort value)
@@ -162,4 +166,10 @@ internal sealed class LinuxDesktopOutput : IDesktopOutput
 
     [DllImport("libc", EntryPoint = "ioctl", SetLastError = true)]
     private static extern int ioctl_setup(int fd, uint request, ref UInputSetup value);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern nint write(
+        SafeFileHandle fd,
+        [In] byte[] buffer,
+        nuint count);
 }

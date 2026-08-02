@@ -99,8 +99,9 @@ public sealed class LinuxUInputOutput(
 
         WriteKey(304, state.Buttons.HasFlag(VirtualButton.A));
         WriteKey(305, state.Buttons.HasFlag(VirtualButton.B));
-        WriteKey(307, state.Buttons.HasFlag(VirtualButton.X));
-        WriteKey(308, state.Buttons.HasFlag(VirtualButton.Y));
+        // Linux names these positionally: BTN_NORTH is 307 and BTN_WEST is 308.
+        WriteKey(307, state.Buttons.HasFlag(VirtualButton.Y));
+        WriteKey(308, state.Buttons.HasFlag(VirtualButton.X));
         WriteKey(310, state.Buttons.HasFlag(VirtualButton.LeftBumper));
         WriteKey(311, state.Buttons.HasFlag(VirtualButton.RightBumper));
         WriteKey(314, state.Buttons.HasFlag(VirtualButton.Back));
@@ -119,7 +120,6 @@ public sealed class LinuxUInputOutput(
         WriteEvent(EvAbs, 2, ToTrigger(state.LeftTrigger));
         WriteEvent(EvAbs, 5, ToTrigger(state.RightTrigger));
         WriteEvent(EvSyn, SynReport, 0);
-        _stream.Flush();
         _last = state;
     }
 
@@ -158,11 +158,15 @@ public sealed class LinuxUInputOutput(
     private void WriteEvent(ushort type, ushort code, int value)
     {
         if (_stream is null) return;
-        Span<byte> bytes = stackalloc byte[24];
-        BitConverter.TryWriteBytes(bytes[16..18], type);
-        BitConverter.TryWriteBytes(bytes[18..20], code);
-        BitConverter.TryWriteBytes(bytes[20..24], value);
-        _stream.Write(bytes);
+        var bytes = new byte[24];
+        BitConverter.TryWriteBytes(bytes.AsSpan(16, 2), type);
+        BitConverter.TryWriteBytes(bytes.AsSpan(18, 2), code);
+        BitConverter.TryWriteBytes(bytes.AsSpan(20, 4), value);
+        if (write(_stream.SafeFileHandle, bytes, (nuint)bytes.Length) != bytes.Length)
+        {
+            throw new IOException(
+                $"uinput event write failed: {Marshal.GetLastPInvokeError()}");
+        }
     }
 
     private static void SetupAxis(SafeFileHandle handle, ushort code, int min, int max)
@@ -187,8 +191,8 @@ public sealed class LinuxUInputOutput(
     {
         304 => VirtualButton.A,
         305 => VirtualButton.B,
-        307 => VirtualButton.X,
-        308 => VirtualButton.Y,
+        307 => VirtualButton.Y,
+        308 => VirtualButton.X,
         310 => VirtualButton.LeftBumper,
         311 => VirtualButton.RightBumper,
         314 => VirtualButton.Back,
@@ -235,6 +239,12 @@ public sealed class LinuxUInputOutput(
 
     [DllImport("libc", EntryPoint = "ioctl", SetLastError = true)]
     private static extern int ioctl_ptr(SafeFileHandle fd, uint request, IntPtr value);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern nint write(
+        SafeFileHandle fd,
+        [In] byte[] buffer,
+        nuint count);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
     private struct UInputSetup

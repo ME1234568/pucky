@@ -196,12 +196,12 @@ public sealed class ControllerService(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        await base.StopAsync(cancellationToken);
         Deactivate();
         _output.FeedbackReceived -= OnFeedback;
         _desktop.Dispose();
         _output.Dispose();
         await transport.DisposeAsync();
-        await base.StopAsync(cancellationToken);
     }
 
     private void MaintainController()

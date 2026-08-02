@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Pucky.Core.Input;
 using Pucky.Core.Mapping;
 
 namespace Pucky.App.Profiles;
@@ -120,6 +121,29 @@ public sealed class ProfileStore
         if (string.IsNullOrWhiteSpace(profile.Name))
         {
             throw new ArgumentException("Profile name is required.");
+        }
+        if (profile.ButtonMappings is null)
+        {
+            throw new ArgumentException("Button mappings are required.");
+        }
+
+        const VirtualButton validTargets =
+            VirtualButton.A | VirtualButton.B | VirtualButton.X | VirtualButton.Y |
+            VirtualButton.LeftBumper | VirtualButton.RightBumper |
+            VirtualButton.Back | VirtualButton.Start | VirtualButton.Guide |
+            VirtualButton.LeftStick | VirtualButton.RightStick |
+            VirtualButton.DPadUp | VirtualButton.DPadDown |
+            VirtualButton.DPadLeft | VirtualButton.DPadRight;
+        foreach (var (source, target) in profile.ButtonMappings)
+        {
+            if (source == SteamButton.None || !Enum.IsDefined(source))
+            {
+                throw new ArgumentException($"Unknown source button '{source}'.");
+            }
+            if ((target & ~validTargets) != 0)
+            {
+                throw new ArgumentException($"Unknown output button in mapping for '{source}'.");
+            }
         }
     }
 

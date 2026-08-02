@@ -10,12 +10,12 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
     private float _mouseXRemainder;
     private float _mouseYRemainder;
 
-    public string Name => "Windows SendInput";
+    public string Name => "Windows cursor + SendInput";
     public bool IsAvailable => true;
 
     public void Submit(DesktopState state)
     {
-        var flags = MouseEvent.Move;
+        var flags = MouseEvent.None;
         if (state.LeftClick != _leftDown)
         {
             flags |= state.LeftClick ? MouseEvent.LeftDown : MouseEvent.LeftUp;
@@ -34,29 +34,22 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
         _mouseXRemainder -= x;
         _mouseYRemainder -= y;
 
-        var input = new Input
+        if ((x != 0 || y != 0) &&
+            GetCursorPos(out var cursor))
         {
-            Type = 0,
-            Data = new InputUnion
-            {
-                Mouse = new MouseInput
-                {
-                    Dx = x,
-                    Dy = y,
-                    Flags = flags
-                }
-            }
-        };
-        _ = SendInput(1, [input], Marshal.SizeOf<Input>());
+            _ = SetCursorPos(cursor.X + x, cursor.Y + y);
+        }
+
+        if (flags != MouseEvent.None)
+        {
+            SendMouseInput(flags);
+        }
 
         if (Math.Abs(state.ScrollY) >= 0.01f)
         {
-            input.Data.Mouse = new MouseInput
-            {
-                MouseData = (uint)(int)Math.Round(state.ScrollY * 120),
-                Flags = MouseEvent.Wheel
-            };
-            _ = SendInput(1, [input], Marshal.SizeOf<Input>());
+            SendMouseInput(
+                MouseEvent.Wheel,
+                (uint)(int)Math.Round(state.ScrollY * 120));
         }
     }
 
@@ -67,6 +60,31 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
             Submit(new DesktopState(0, 0, 0, 0, false, false));
         }
     }
+
+    private static void SendMouseInput(MouseEvent flags, uint mouseData = 0)
+    {
+        var input = new Input
+        {
+            Type = 0,
+            Data = new InputUnion
+            {
+                Mouse = new MouseInput
+                {
+                    MouseData = mouseData,
+                    Flags = flags
+                }
+            }
+        };
+        _ = SendInput(1, [input], Marshal.SizeOf<Input>());
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out Point point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetCursorPos(int x, int y);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(
@@ -99,10 +117,17 @@ public sealed class WindowsDesktopOutput : IDesktopOutput
         public UIntPtr ExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
     [Flags]
     private enum MouseEvent : uint
     {
-        Move = 0x0001,
+        None = 0,
         LeftDown = 0x0002,
         LeftUp = 0x0004,
         RightDown = 0x0008,

@@ -42,6 +42,26 @@ const controls = {
   gyroSensitivity: $("#gyro-sensitivity")
 };
 
+const rearMappingControls = $$('[data-mapping-source]');
+const mappingTargets = [
+  ["None", "Disabled"],
+  ["A", "A"], ["B", "B"], ["X", "X"], ["Y", "Y"],
+  ["LeftBumper", "Left bumper"], ["RightBumper", "Right bumper"],
+  ["Back", "View / Back"], ["Start", "Menu / Start"], ["Guide", "Steam / Guide"],
+  ["LeftStick", "Left stick click"], ["RightStick", "Right stick click"],
+  ["DPadUp", "D-pad up"], ["DPadDown", "D-pad down"],
+  ["DPadLeft", "D-pad left"], ["DPadRight", "D-pad right"]
+];
+
+rearMappingControls.forEach(select => {
+  select.replaceChildren(...mappingTargets.map(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
+});
+
 let liveSource;
 
 async function request(path, options = {}) {
@@ -97,6 +117,9 @@ function populateProfile(profile) {
   controls.rightHapticIntensity.value = profile.rightPad.hapticIntensity ?? 0.65;
   controls.gyroMode.value = profile.gyro.mode;
   controls.gyroSensitivity.value = profile.gyro.sensitivity;
+  rearMappingControls.forEach(select => {
+    select.value = profile.buttonMappings?.[select.dataset.mappingSource] ?? "None";
+  });
   refreshOutputs();
 }
 
@@ -114,6 +137,15 @@ function readProfile() {
   profile.rightPad.hapticIntensity = Number(controls.rightHapticIntensity.value);
   profile.gyro.mode = controls.gyroMode.value;
   profile.gyro.sensitivity = Number(controls.gyroSensitivity.value);
+  profile.buttonMappings ??= {};
+  rearMappingControls.forEach(select => {
+    const source = select.dataset.mappingSource;
+    if (select.value === "None") {
+      delete profile.buttonMappings[source];
+    } else {
+      profile.buttonMappings[source] = select.value;
+    }
+  });
   return profile;
 }
 
@@ -358,6 +390,7 @@ $("#save-profile").addEventListener("click", async () => {
 });
 
 Object.values(controls).forEach(control => control.addEventListener("input", refreshOutputs));
+rearMappingControls.forEach(control => control.addEventListener("input", refreshOutputs));
 
 async function poll() {
   try {

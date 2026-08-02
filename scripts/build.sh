@@ -5,13 +5,22 @@ runtime="${1:-linux-x64}"
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 output="$root/artifacts/$runtime"
 
-dotnet publish "$root/src/Pucky.App/Pucky.App.csproj" \
-  --configuration Release \
-  --runtime "$runtime" \
-  --self-contained true \
-  -p:PublishSingleFile=true \
-  -p:IncludeNativeLibrariesForSelfExtract=true \
-  --output "$output"
+if [ "${PUCKY_SKIP_DOTNET_PUBLISH:-0}" = "1" ]; then
+  if [ ! -f "$output/pucky" ]; then
+    printf 'PUCKY_SKIP_DOTNET_PUBLISH=1, but %s does not exist.\n' "$output/pucky" >&2
+    printf '%s\n' 'Publish the managed osx artifact on another machine and copy the complete output directory here first.' >&2
+    exit 2
+  fi
+  printf 'Using the existing managed publish at %s\n' "$output"
+else
+  dotnet publish "$root/src/Pucky.App/Pucky.App.csproj" \
+    --configuration Release \
+    --runtime "$runtime" \
+    --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    --output "$output"
+fi
 
 case "$runtime" in
   osx-*)

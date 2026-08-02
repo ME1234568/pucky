@@ -129,6 +129,29 @@ run `artifacts/osx-arm64/pucky`. Building first matters: on some Apple Silicon
 systems, disabling SIP prevents the signed `dotnet` SDK itself from creating
 CoreCLR.
 
+If SIP is already disabled and `dotnet --info` fails, publish the managed part
+on a normal-security Mac, Windows, or Linux machine:
+
+```sh
+dotnet publish src/Pucky.App/Pucky.App.csproj \
+  --configuration Release \
+  --runtime osx-arm64 \
+  --self-contained true \
+  -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true \
+  --output artifacts/osx-arm64
+```
+
+Copy the complete `artifacts/osx-arm64` directory and repository to the Mac.
+Then compile and sign only the native helper without invoking the broken .NET
+SDK:
+
+```sh
+PUCKY_SKIP_DOTNET_PUBLISH=1 \
+PUCKY_CODESIGN_IDENTITY=- \
+  ./scripts/build.sh osx-arm64
+```
+
 An ad-hoc signature is not authorization. Pucky does not change the Mac's boot
 security policy and does not recommend weakening AMFI or SIP on a general-use
 Mac. Re-enable normal security after testing. When security is restored, this

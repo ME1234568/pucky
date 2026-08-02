@@ -39,7 +39,7 @@ telemetry.
 | Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
 | macOS | Yes | Experimental HID gamepad | Yes | Direct test/output path |
 
-Pucky's macOS backend streams compact Razer Serval-compatible reports to a
+Pucky's macOS backend streams compact Stadia Controller-compatible reports to a
 small native helper, which publishes the `IOHIDUserDevice`. Isolating the
 helper keeps the restricted entitlement off the CoreCLR process. This
 compatibility target is recognized by Steam, SDL, and Wine/CrossOver, but

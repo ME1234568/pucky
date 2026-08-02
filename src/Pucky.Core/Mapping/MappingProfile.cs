@@ -36,7 +36,8 @@ public enum VirtualButton : uint
     DPadUp = 1 << 11,
     DPadDown = 1 << 12,
     DPadLeft = 1 << 13,
-    DPadRight = 1 << 14
+    DPadRight = 1 << 14,
+    QuickAccess = 1 << 15
 }
 
 public sealed record PadSettings
@@ -89,6 +90,7 @@ public sealed record MappingProfile
         [SteamButton.View] = VirtualButton.Back,
         [SteamButton.Menu] = VirtualButton.Start,
         [SteamButton.Steam] = VirtualButton.Guide,
+        [SteamButton.QuickAccess] = VirtualButton.QuickAccess,
         [SteamButton.LeftStick] = VirtualButton.LeftStick,
         [SteamButton.RightStick] = VirtualButton.RightStick,
         [SteamButton.DPadUp] = VirtualButton.DPadUp,

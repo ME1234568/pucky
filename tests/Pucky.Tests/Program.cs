@@ -30,6 +30,7 @@ static void EncodeMacHidGamepad()
         VirtualButton.RightBumper |
         VirtualButton.Start |
         VirtualButton.Guide |
+        VirtualButton.QuickAccess |
         VirtualButton.RightStick |
         VirtualButton.DPadUp |
         VirtualButton.DPadRight,
@@ -40,15 +41,16 @@ static void EncodeMacHidGamepad()
 
     var report = MacHidGamepadReport.Encode(state);
     Equal(MacHidGamepadReport.Length, report.Length);
-    Equal((byte)0xA9, report[0]);
-    Equal((byte)0x05, report[1]);
-    Equal((byte)1, report[2]);
-    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
-    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
-    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
-    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
+    Equal((byte)0x91, report[0]);
+    Equal((byte)0x58, report[1]);
+    Equal((byte)0x01, report[2]);
+    Equal((byte)1, report[3]);
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(4)));
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(6)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(8)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(10)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(12)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(14)));
 }
 
 var failures = 0;
@@ -367,10 +369,14 @@ static void MapLayer()
             }
         ]
     };
-    var state = new ControllerState { Buttons = SteamButton.L4 | SteamButton.A };
+    var state = new ControllerState
+    {
+        Buttons = SteamButton.L4 | SteamButton.A | SteamButton.QuickAccess
+    };
     var mapped = new MappingEngine().Map(state, profile);
     Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.Y));
     Equal(false, mapped.Gamepad.Buttons.HasFlag(VirtualButton.A));
+    Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.QuickAccess));
 }
 
 static void MapRearButtons()

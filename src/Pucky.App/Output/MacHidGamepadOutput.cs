@@ -18,7 +18,7 @@ public sealed class MacHidGamepadOutput(
     private Task<string>? _helperError;
     private DateTime _nextConnectAttempt;
 
-    public string Name => "Razer Serval-compatible virtual HID gamepad";
+    public string Name => "Stadia-compatible virtual HID gamepad";
 
     public bool IsConnected
     {
@@ -112,16 +112,20 @@ public sealed class MacHidGamepadOutput(
                 }
 
                 var response = readyTask.GetAwaiter().GetResult();
-                if (!string.Equals(response, "READY", StringComparison.Ordinal))
+                var expectedResponse = $"READY {MacHidGamepadReport.Length}";
+                if (!string.Equals(response, expectedResponse, StringComparison.Ordinal))
                 {
                     StopProcess(process, process.StandardInput.BaseStream);
                     var error = errorTask.IsCompletedSuccessfully
                         ? errorTask.Result.Trim()
                         : null;
                     process.Dispose();
-                    UnavailableReason = string.IsNullOrWhiteSpace(response)
-                        ? BuildExitReason(null, error)
-                        : response;
+                    UnavailableReason = response?.StartsWith("READY", StringComparison.Ordinal) == true
+                        ? "The native HID helper uses an incompatible report format. " +
+                          "Rebuild and replace the complete Pucky artifact."
+                        : string.IsNullOrWhiteSpace(response)
+                            ? BuildExitReason(null, error)
+                            : response;
                     return false;
                 }
 

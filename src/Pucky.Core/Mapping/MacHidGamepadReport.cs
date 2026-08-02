@@ -4,54 +4,53 @@ namespace Pucky.Core.Mapping;
 
 /// <summary>
 /// Encodes the compact input report consumed by Pucky's native macOS HID
-/// helper. The layout is compatible with the conventional Razer Serval
-/// mapping used by SDL: 11 buttons, a hat switch, four stick axes, and two
-/// trigger axes.
+/// helper. The raw button and axis usages match the Stadia Controller mapping
+/// used by Chromium on macOS: 18 buttons, a hat switch, four stick axes, and
+/// two trigger axes.
 /// </summary>
 public static class MacHidGamepadReport
 {
-    public const int Length = 15;
+    public const int Length = 16;
 
     public static byte[] Encode(VirtualGamepadState state)
     {
         var report = new byte[Length];
-        BinaryPrimitives.WriteUInt16LittleEndian(report, EncodeButtons(state.Buttons));
-        report[2] = EncodeHat(state.Buttons);
-        WriteAxis(report, 3, state.LeftStick.X);
-        WriteAxis(report, 5, -state.LeftStick.Y);
-        WriteAxis(report, 7, state.RightStick.X);
-        WriteAxis(report, 9, -state.RightStick.Y);
-        WriteTrigger(report, 11, state.RightTrigger);
-        WriteTrigger(report, 13, state.LeftTrigger);
+        EncodeButtons(report, state.Buttons);
+        report[3] = EncodeHat(state.Buttons);
+        WriteAxis(report, 4, state.LeftStick.X);
+        WriteAxis(report, 6, -state.LeftStick.Y);
+        WriteAxis(report, 8, state.RightStick.X);
+        WriteTrigger(report, 10, state.LeftTrigger);
+        WriteTrigger(report, 12, state.RightTrigger);
+        WriteAxis(report, 14, -state.RightStick.Y);
         return report;
     }
 
-    private static ushort EncodeButtons(VirtualButton buttons)
+    private static void EncodeButtons(byte[] report, VirtualButton buttons)
     {
-        ushort result = 0;
-        SetButton(ref result, 0, buttons, VirtualButton.A);
-        SetButton(ref result, 1, buttons, VirtualButton.B);
-        SetButton(ref result, 2, buttons, VirtualButton.X);
-        SetButton(ref result, 3, buttons, VirtualButton.Y);
-        SetButton(ref result, 4, buttons, VirtualButton.LeftBumper);
-        SetButton(ref result, 5, buttons, VirtualButton.RightBumper);
-        SetButton(ref result, 6, buttons, VirtualButton.Back);
-        SetButton(ref result, 7, buttons, VirtualButton.Start);
-        SetButton(ref result, 8, buttons, VirtualButton.Guide);
-        SetButton(ref result, 9, buttons, VirtualButton.LeftStick);
-        SetButton(ref result, 10, buttons, VirtualButton.RightStick);
-        return result;
+        SetButton(report, 0, buttons, VirtualButton.A);
+        SetButton(report, 1, buttons, VirtualButton.B);
+        SetButton(report, 3, buttons, VirtualButton.X);
+        SetButton(report, 4, buttons, VirtualButton.Y);
+        SetButton(report, 6, buttons, VirtualButton.LeftBumper);
+        SetButton(report, 7, buttons, VirtualButton.RightBumper);
+        SetButton(report, 10, buttons, VirtualButton.Back);
+        SetButton(report, 11, buttons, VirtualButton.Start);
+        SetButton(report, 12, buttons, VirtualButton.Guide);
+        SetButton(report, 13, buttons, VirtualButton.LeftStick);
+        SetButton(report, 14, buttons, VirtualButton.RightStick);
+        SetButton(report, 16, buttons, VirtualButton.QuickAccess);
     }
 
     private static void SetButton(
-        ref ushort result,
+        byte[] report,
         int bit,
         VirtualButton buttons,
         VirtualButton expected)
     {
         if (buttons.HasFlag(expected))
         {
-            result |= (ushort)(1 << bit);
+            report[bit / 8] |= (byte)(1 << (bit % 8));
         }
     }
 

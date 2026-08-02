@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-enum { REPORT_LENGTH = 15 };
+enum { REPORT_LENGTH = 16 };
 
 /*
  * IOHIDUserDevice is entitlement-gated and its header is not present in every
@@ -19,9 +19,9 @@ static create_user_device_fn create_user_device;
 static handle_report_fn handle_report;
 
 /*
- * Standards-based gamepad descriptor matching SDL's macOS Razer Serval
- * mapping: 11 buttons, one hat, and six signed 16-bit axes. There are no
- * report IDs, so each input packet is exactly REPORT_LENGTH bytes.
+ * Standards-based gamepad descriptor matching Chromium's macOS Stadia
+ * Controller mapping: 18 buttons, one hat, and six signed 16-bit axes. There
+ * are no report IDs, so each input packet is exactly REPORT_LENGTH bytes.
  */
 static const uint8_t report_descriptor[] = {
     0x05, 0x01,       /* Usage Page (Generic Desktop) */
@@ -29,14 +29,14 @@ static const uint8_t report_descriptor[] = {
     0xA1, 0x01,       /* Collection (Application) */
     0x05, 0x09,       /*   Usage Page (Button) */
     0x19, 0x01,       /*   Usage Minimum (Button 1) */
-    0x29, 0x0B,       /*   Usage Maximum (Button 11) */
+    0x29, 0x12,       /*   Usage Maximum (Button 18) */
     0x15, 0x00,       /*   Logical Minimum (0) */
     0x25, 0x01,       /*   Logical Maximum (1) */
     0x75, 0x01,       /*   Report Size (1) */
-    0x95, 0x0B,       /*   Report Count (11) */
+    0x95, 0x12,       /*   Report Count (18) */
     0x81, 0x02,       /*   Input (Data, Variable, Absolute) */
     0x75, 0x01,       /*   Report Size (1) */
-    0x95, 0x05,       /*   Report Count (5) */
+    0x95, 0x06,       /*   Report Count (6) */
     0x81, 0x03,       /*   Input (Constant) */
     0x05, 0x01,       /*   Usage Page (Generic Desktop) */
     0x09, 0x39,       /*   Usage (Hat Switch) */
@@ -55,9 +55,9 @@ static const uint8_t report_descriptor[] = {
     0x09, 0x30,       /*   Usage (X: left stick X) */
     0x09, 0x31,       /*   Usage (Y: left stick Y) */
     0x09, 0x32,       /*   Usage (Z: right stick X) */
-    0x09, 0x33,       /*   Usage (Rx: right stick Y) */
+    0x09, 0x33,       /*   Usage (Rx: left trigger) */
     0x09, 0x34,       /*   Usage (Ry: right trigger) */
-    0x09, 0x35,       /*   Usage (Rz: left trigger) */
+    0x09, 0x35,       /*   Usage (Rz: right stick Y) */
     0x16, 0x00, 0x80, /*   Logical Minimum (-32768) */
     0x26, 0xFF, 0x7F, /*   Logical Maximum (32767) */
     0x75, 0x10,       /*   Report Size (16) */
@@ -106,13 +106,13 @@ static CFTypeRef create_gamepad(void)
         return NULL;
     }
 
-    set_number(properties, CFSTR("VendorID"), 0x1532);
-    set_number(properties, CFSTR("ProductID"), 0x0900);
+    set_number(properties, CFSTR("VendorID"), 0x18D1);
+    set_number(properties, CFSTR("ProductID"), 0x9400);
     set_number(properties, CFSTR("VersionNumber"), 0x0200);
     set_number(properties, CFSTR("PrimaryUsagePage"), 0x01);
     set_number(properties, CFSTR("PrimaryUsage"), 0x05);
-    CFDictionarySetValue(properties, CFSTR("Manufacturer"), CFSTR("Razer"));
-    CFDictionarySetValue(properties, CFSTR("Product"), CFSTR("Razer Serval"));
+    CFDictionarySetValue(properties, CFSTR("Manufacturer"), CFSTR("Google"));
+    CFDictionarySetValue(properties, CFSTR("Product"), CFSTR("Stadia Controller"));
     CFDictionarySetValue(properties, CFSTR("SerialNumber"), CFSTR("PUCKY-VIRTUAL-1"));
     CFDictionarySetValue(properties, CFSTR("Transport"), CFSTR("USB"));
 
@@ -150,7 +150,7 @@ int main(void)
         return 2;
     }
 
-    fputs("READY\n", stdout);
+    fprintf(stdout, "READY %d\n", REPORT_LENGTH);
     uint8_t report[REPORT_LENGTH];
     size_t used = 0;
     for (;;) {

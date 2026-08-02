@@ -34,7 +34,7 @@ telemetry.
 | Platform | Raw input | Virtual gamepad | Pointer | Rumble |
 | --- | --- | --- | --- | --- |
 | Windows 10/11 | Yes | Xbox 360 via ViGEmBus | Yes | Yes |
-| Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Force-feedback return is not yet wired |
+| Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
 | macOS | Yes | Not system-wide | Yes | Direct test/output path |
 
 macOS does not currently provide a generally available system-wide virtual

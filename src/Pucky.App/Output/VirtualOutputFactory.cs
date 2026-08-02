@@ -14,8 +14,12 @@ public sealed class VirtualOutputFactory(IServiceProvider services)
             return ActivatorUtilities.CreateInstance<LinuxUInputOutput>(services);
         }
 
+        if (OperatingSystem.IsMacOS())
+        {
+            return ActivatorUtilities.CreateInstance<MacHidGamepadOutput>(services);
+        }
+
         return new UnavailableOutput(
-            "macOS does not expose a public system-wide virtual gamepad API. " +
-            "Raw input, profiles, gyro, touchpads, and diagnostics remain available.");
+            "A virtual gamepad backend is unavailable on this platform.");
     }
 }

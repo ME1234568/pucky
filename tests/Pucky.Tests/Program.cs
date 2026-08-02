@@ -18,8 +18,38 @@ var tests = new (string Name, Action Run)[]
     ("glides the cursor after a trackpad swipe", GlideTrackpadMouse),
     ("maps buttons and action layers", MapLayer),
     ("maps all four rear buttons", MapRearButtons),
-    ("maps the trackpad to a D-pad", MapTrackpadDPad)
+    ("maps the trackpad to a D-pad", MapTrackpadDPad),
+    ("encodes a macOS HID gamepad report", EncodeMacHidGamepad)
 };
+
+static void EncodeMacHidGamepad()
+{
+    var state = new VirtualGamepadState(
+        VirtualButton.A |
+        VirtualButton.Y |
+        VirtualButton.RightBumper |
+        VirtualButton.Start |
+        VirtualButton.Guide |
+        VirtualButton.RightStick |
+        VirtualButton.DPadUp |
+        VirtualButton.DPadRight,
+        new Axis2(-1, 1),
+        new Axis2(0.5f, -0.5f),
+        0,
+        1);
+
+    var report = MacHidGamepadReport.Encode(state);
+    Equal(MacHidGamepadReport.Length, report.Length);
+    Equal((byte)0xA9, report[0]);
+    Equal((byte)0x05, report[1]);
+    Equal((byte)1, report[2]);
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
+}
 
 var failures = 0;
 foreach (var (name, run) in tests)

@@ -24,6 +24,8 @@ telemetry.
 - Windows system-wide Xbox 360 output, game-driven vibration, and an in-app
   vibration test
 - Linux system-wide Xbox-compatible `uinput` output
+- Experimental macOS system-wide HID gamepad output for appropriately signed
+  or locally security-relaxed builds
 - Native pointer/scroll output on Windows, Linux, and macOS
 - A dedicated control window that opens with Pucky, featuring live input
   visualization on the supplied controller artwork and profile editing; the
@@ -35,14 +37,19 @@ telemetry.
 | --- | --- | --- | --- | --- |
 | Windows 10/11 | Yes | Xbox 360 via ViGEmBus | Yes | Yes |
 | Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
-| macOS | Yes | Not system-wide | Yes | Direct test/output path |
+| macOS | Yes | Experimental HID gamepad | Yes | Direct test/output path |
 
-macOS does not currently provide a generally available system-wide virtual
-gamepad API. Apple documents that virtual game controllers are not reliably
-available to ordinary apps; a distributable implementation needs Apple's
-virtual-HID entitlement or a DriverKit extension. Pucky therefore exposes raw
-input, profiles, diagnostics, gyro, touchpads, and pointer output on macOS, but
-does not pretend to create a gamepad that games cannot see.
+Pucky's macOS gamepad backend publishes an `IOHIDUserDevice` with a compact
+Razer Serval-compatible HID layout. This compatibility target is recognized by
+Steam, SDL, and Wine/CrossOver, but compatibility with raw-HID consumers and
+Apple's GameController framework varies by macOS release. The current backend
+is input-only, so game-driven rumble is not yet available; Pucky's direct
+vibration test still works.
+
+Creating the device requires the restricted
+`com.apple.developer.hid.virtual.device` entitlement. Ordinary unsigned builds
+continue to provide raw input and pointer output and report the gamepad as
+unavailable instead of invoking the restricted API.
 
 Firmware updates and Puck pairing remain firmware-management operations. Do
 those once with Steam or Valve's supported tooling; normal Pucky use does not
@@ -94,6 +101,30 @@ Linux/macOS:
 ./scripts/build.sh linux-x64
 # Valid alternatives include linux-arm64, osx-x64, and osx-arm64.
 ```
+
+### macOS virtual gamepad signing
+
+For a normal-security Mac, use a signing identity whose App ID Apple has
+authorized for the HID Virtual Device capability:
+
+```sh
+PUCKY_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  ./scripts/build.sh osx-arm64
+```
+
+For local development only, an ad-hoc signature can embed the entitlement:
+
+```sh
+PUCKY_CODESIGN_IDENTITY=- ./scripts/build.sh osx-arm64
+```
+
+An ad-hoc signature is not authorization. It only permits gamepad creation on
+a development Mac where the owner has already changed the boot security policy
+to relax AMFI entitlement enforcement. Pucky does not make that change and
+does not recommend weakening AMFI or SIP on a general-use Mac. Re-enable normal
+security after testing. Builds without either an authorized signature or an
+explicitly security-relaxed development environment retain all non-gamepad
+macOS functionality.
 
 Outputs go to `artifacts/<runtime>/`. Builds are self-contained and do not
 require users to install .NET.

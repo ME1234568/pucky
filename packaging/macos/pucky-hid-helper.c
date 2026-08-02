@@ -1,12 +1,22 @@
 #include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/hid/IOHIDKeys.h>
-#include <IOKit/hid/IOHIDUserDevice.h>
+#include <dlfcn.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 enum { REPORT_LENGTH = 15 };
+
+/*
+ * IOHIDUserDevice is entitlement-gated and its header is not present in every
+ * public macOS SDK. Resolve the stable framework symbols at runtime so the
+ * helper can be built using the ordinary Command Line Tools SDK.
+ */
+typedef CFTypeRef (*create_user_device_fn)(CFAllocatorRef, CFDictionaryRef);
+typedef int32_t (*handle_report_fn)(CFTypeRef, const uint8_t *, CFIndex);
+
+static create_user_device_fn create_user_device;
+static handle_report_fn handle_report;
 
 /*
  * Standards-based gamepad descriptor matching SDL's macOS Razer Serval
@@ -65,7 +75,27 @@ static void set_number(CFMutableDictionaryRef properties, CFStringRef key, int32
     }
 }
 
-static IOHIDUserDeviceRef create_gamepad(void)
+static void *load_iokit(void)
+{
+    void *framework = dlopen(
+        "/System/Library/Frameworks/IOKit.framework/IOKit",
+        RTLD_NOW | RTLD_LOCAL);
+    if (framework == NULL) {
+        return NULL;
+    }
+
+    create_user_device = (create_user_device_fn)dlsym(framework, "IOHIDUserDeviceCreate");
+    handle_report = (handle_report_fn)dlsym(framework, "IOHIDUserDeviceHandleReport");
+    if (create_user_device == NULL || handle_report == NULL) {
+        dlclose(framework);
+        create_user_device = NULL;
+        handle_report = NULL;
+        return NULL;
+    }
+    return framework;
+}
+
+static CFTypeRef create_gamepad(void)
 {
     CFMutableDictionaryRef properties = CFDictionaryCreateMutable(
         kCFAllocatorDefault,
@@ -76,15 +106,15 @@ static IOHIDUserDeviceRef create_gamepad(void)
         return NULL;
     }
 
-    set_number(properties, CFSTR(kIOHIDVendorIDKey), 0x1532);
-    set_number(properties, CFSTR(kIOHIDProductIDKey), 0x0900);
-    set_number(properties, CFSTR(kIOHIDVersionNumberKey), 0x0200);
-    set_number(properties, CFSTR(kIOHIDPrimaryUsagePageKey), 0x01);
-    set_number(properties, CFSTR(kIOHIDPrimaryUsageKey), 0x05);
-    CFDictionarySetValue(properties, CFSTR(kIOHIDManufacturerKey), CFSTR("Razer"));
-    CFDictionarySetValue(properties, CFSTR(kIOHIDProductKey), CFSTR("Razer Serval"));
-    CFDictionarySetValue(properties, CFSTR(kIOHIDSerialNumberKey), CFSTR("PUCKY-VIRTUAL-1"));
-    CFDictionarySetValue(properties, CFSTR(kIOHIDTransportKey), CFSTR("USB"));
+    set_number(properties, CFSTR("VendorID"), 0x1532);
+    set_number(properties, CFSTR("ProductID"), 0x0900);
+    set_number(properties, CFSTR("VersionNumber"), 0x0200);
+    set_number(properties, CFSTR("PrimaryUsagePage"), 0x01);
+    set_number(properties, CFSTR("PrimaryUsage"), 0x05);
+    CFDictionarySetValue(properties, CFSTR("Manufacturer"), CFSTR("Razer"));
+    CFDictionarySetValue(properties, CFSTR("Product"), CFSTR("Razer Serval"));
+    CFDictionarySetValue(properties, CFSTR("SerialNumber"), CFSTR("PUCKY-VIRTUAL-1"));
+    CFDictionarySetValue(properties, CFSTR("Transport"), CFSTR("USB"));
 
     CFDataRef descriptor = CFDataCreate(
         kCFAllocatorDefault,
@@ -94,10 +124,10 @@ static IOHIDUserDeviceRef create_gamepad(void)
         CFRelease(properties);
         return NULL;
     }
-    CFDictionarySetValue(properties, CFSTR(kIOHIDReportDescriptorKey), descriptor);
+    CFDictionarySetValue(properties, CFSTR("ReportDescriptor"), descriptor);
     CFRelease(descriptor);
 
-    IOHIDUserDeviceRef device = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties);
+    CFTypeRef device = create_user_device(kCFAllocatorDefault, properties);
     CFRelease(properties);
     return device;
 }
@@ -107,9 +137,16 @@ int main(void)
     signal(SIGPIPE, SIG_IGN);
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    IOHIDUserDeviceRef device = create_gamepad();
+    void *iokit = load_iokit();
+    if (iokit == NULL) {
+        fputs("ERROR Could not load IOHIDUserDevice symbols from IOKit.\n", stdout);
+        return 1;
+    }
+
+    CFTypeRef device = create_gamepad();
     if (device == NULL) {
         fputs("ERROR macOS refused to create the virtual HID device. Check the helper signature, entitlement, and AMFI policy.\n", stdout);
+        dlclose(iokit);
         return 2;
     }
 
@@ -124,6 +161,7 @@ int main(void)
             }
             if (ferror(stdin)) {
                 CFRelease(device);
+                dlclose(iokit);
                 return 3;
             }
             continue;
@@ -131,8 +169,8 @@ int main(void)
 
         used += count;
         if (used == REPORT_LENGTH) {
-            IOReturn result = IOHIDUserDeviceHandleReport(device, report, REPORT_LENGTH);
-            if (result != kIOReturnSuccess) {
+            int32_t result = handle_report(device, report, REPORT_LENGTH);
+            if (result != 0) {
                 fprintf(
                     stderr,
                     "IOHIDUserDeviceHandleReport failed: 0x%08x\n",
@@ -143,5 +181,6 @@ int main(void)
     }
 
     CFRelease(device);
+    dlclose(iokit);
     return 0;
 }

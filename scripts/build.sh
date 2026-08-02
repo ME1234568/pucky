@@ -44,7 +44,6 @@ case "$runtime" in
       -Wall \
       -Wextra \
       -framework CoreFoundation \
-      -framework IOKit \
       "$root/packaging/macos/pucky-hid-helper.c" \
       -o "$output/pucky-hid-helper"
 

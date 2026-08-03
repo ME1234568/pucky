@@ -39,12 +39,15 @@ telemetry.
 | Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
 | macOS | Yes | Experimental HID gamepad | Yes | Direct test/output path |
 
-Pucky's macOS backend streams Xbox One S Model 1708 Bluetooth HID reports to a
-small native helper, which publishes the `IOHIDUserDevice`. Isolating the
-helper keeps the restricted entitlement off the CoreCLR process. This
-compatibility target is recognized by Steam, SDL, and Wine/CrossOver, but
-compatibility with raw-HID consumers and Apple's GameController framework
-varies by macOS release. The current backend is input-only, so game-driven
+Pucky's macOS backend streams 15-byte standard HID reports to a small native
+helper, which publishes a Razer Serval-compatible `IOHIDUserDevice`. Isolating
+the helper keeps the restricted entitlement off the CoreCLR process. The raw
+button and axis layout targets Chromium's macOS standard-gamepad mapping,
+including two independent analog trigger axes. A recognized Xbox identity is
+intentionally not used because macOS routes it through GameController, where
+arbitrary virtual-HID trigger reports are discarded. Native Steam/SDL clients
+may apply a different built-in Serval profile, so this output remains
+experimental outside Chromium. The backend is input-only, so game-driven
 rumble is not yet available; Pucky's direct vibration test still works.
 
 Creating the device requires the restricted

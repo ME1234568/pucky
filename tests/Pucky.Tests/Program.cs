@@ -78,8 +78,8 @@ static void EncodeMacHidGamepad()
     Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
     Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
     Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
     Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
 
     var halfTriggers = MacHidGamepadReport.Encode(new VirtualGamepadState(
@@ -89,13 +89,13 @@ static void EncodeMacHidGamepad()
 
     var leftTriggerOnly = MacHidGamepadReport.Encode(new VirtualGamepadState(
         VirtualButton.None, Axis2.Zero, Axis2.Zero, 1, 0));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(leftTriggerOnly.AsSpan(9)));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(leftTriggerOnly.AsSpan(11)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(leftTriggerOnly.AsSpan(9)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(leftTriggerOnly.AsSpan(11)));
 
     var rightTriggerOnly = MacHidGamepadReport.Encode(new VirtualGamepadState(
         VirtualButton.None, Axis2.Zero, Axis2.Zero, 0, 1));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(rightTriggerOnly.AsSpan(9)));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(rightTriggerOnly.AsSpan(11)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(rightTriggerOnly.AsSpan(9)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(rightTriggerOnly.AsSpan(11)));
 }
 
 static void MapFullTriggerPulls()

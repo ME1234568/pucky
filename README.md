@@ -50,6 +50,10 @@ may apply a different built-in Serval profile, so this output remains
 experimental outside Chromium. The backend is input-only, so game-driven
 rumble is not yet available; Pucky's direct vibration test still works.
 
+The helper marks its published HID as a GameController synthetic device. This
+prevents macOS from also applying its native Serval button profile and treating
+a Chromium shoulder-button usage as the configurable system Home shortcut.
+
 Creating the device requires the restricted
 `com.apple.developer.hid.virtual.device` entitlement. It is applied only to
 `pucky-hid-helper`; the main Pucky process never invokes the restricted API.

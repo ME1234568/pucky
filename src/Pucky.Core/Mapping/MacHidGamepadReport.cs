@@ -9,7 +9,7 @@ namespace Pucky.Core.Mapping;
 /// </summary>
 public static class MacHidGamepadReport
 {
-    public const int ProtocolVersion = 5;
+    public const int ProtocolVersion = 6;
     public const int Length = 15;
 
     public static byte[] Encode(VirtualGamepadState state)
@@ -20,8 +20,10 @@ public static class MacHidGamepadReport
         WriteAxis(report, 3, state.LeftStick.X);
         WriteAxis(report, 5, -state.LeftStick.Y);
         WriteAxis(report, 7, state.RightStick.X);
-        WriteTrigger(report, 9, state.LeftTrigger);
-        WriteTrigger(report, 11, state.RightTrigger);
+        // The macOS Serval path exposes these two trigger elements in the
+        // opposite order from their descriptor declaration.
+        WriteTrigger(report, 9, state.RightTrigger);
+        WriteTrigger(report, 11, state.LeftTrigger);
         WriteAxis(report, 13, -state.RightStick.Y);
         return report;
     }

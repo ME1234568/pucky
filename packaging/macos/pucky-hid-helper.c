@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-enum { REPORT_PROTOCOL = 5, REPORT_LENGTH = 15 };
+enum { REPORT_PROTOCOL = 6, REPORT_LENGTH = 15 };
 
 /*
  * IOHIDUserDevice is entitlement-gated and its header is not present in every
@@ -126,6 +126,13 @@ static CFTypeRef create_gamepad(void)
     CFDictionarySetValue(properties, CFSTR("Product"), CFSTR("Razer Serval"));
     CFDictionarySetValue(properties, CFSTR("SerialNumber"), CFSTR("PUCKY-VIRTUAL-1"));
     CFDictionarySetValue(properties, CFSTR("Transport"), CFSTR("USB"));
+    /*
+     * Keep GameController from applying its native Serval profile to this
+     * deliberately Chromium-shaped report. Without this marker, macOS can
+     * interpret raw Button 7 (Chromium's LB) as the system Home shortcut.
+     * The literal is Apple's documented kIOHIDGCSyntheticDeviceKey value.
+     */
+    CFDictionarySetValue(properties, CFSTR("GCSyntheticDevice"), kCFBooleanTrue);
 
     CFDataRef descriptor = CFDataCreate(
         kCFAllocatorDefault,

@@ -189,7 +189,7 @@ public sealed class MappingEngine
                 desktop = desktop with
                 {
                     ScrollX = desktop.ScrollX + (delta.X * settings.Sensitivity * 8f),
-                    ScrollY = desktop.ScrollY + (delta.Y * settings.Sensitivity * 8f)
+                    ScrollY = desktop.ScrollY - (delta.Y * settings.Sensitivity * 8f)
                 };
                 break;
             }
@@ -221,7 +221,7 @@ public sealed class MappingEngine
                 : Axis2.Zero;
             var movement = new Axis2(
                 delta.X * settings.Sensitivity * MouseScale,
-                delta.Y * settings.Sensitivity * MouseScale);
+                -delta.Y * settings.Sensitivity * MouseScale);
 
             if (motion.HadTouch && elapsed > 0)
             {

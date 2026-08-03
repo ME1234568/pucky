@@ -110,7 +110,7 @@ static void ParseState()
     report[4] = 0x6B; // Steam, L4, LB, right pad touch/click
     report[5] = 0x23; // LS touch, left pad touch, left grip
     WriteInt16(report, 6, 16384);
-    WriteInt16(report, 8, 32767);
+    WriteUInt16(report, 8, 32768);
     WriteInt16(report, 10, -32768);
     WriteInt16(report, 12, 32767);
     WriteInt16(report, 14, 8192);
@@ -144,7 +144,7 @@ static void ParseState()
     Near(1, state.LeftStick.Y, 0.001f);
     Near(-0.25f, state.RightStick.Y, 0.001f);
     Near(12000 / 32767f, state.LeftPad.Position.Y, 0.001f);
-    Near(20000 / 32768f, state.RightPad.Position.Y, 0.001f);
+    Near(-20000 / 32768f, state.RightPad.Position.Y, 0.001f);
     Equal(true, state.RightPad.Touched);
     Equal(true, state.RightPad.Clicked);
     Equal((uint)123456, state.Imu!.Value.Timestamp);
@@ -367,7 +367,7 @@ static void GlideTrackpadMouse()
     var swipe = engine.Map(
         new ControllerState
         {
-            RightPad = new TrackpadState(new Axis2(0.2f, 0), 1, true, false),
+            RightPad = new TrackpadState(new Axis2(0.2f, 0.2f), 1, true, false),
             ReceivedAt = start.AddMilliseconds(10)
         },
         profile);
@@ -377,6 +377,7 @@ static void GlideTrackpadMouse()
     var glide = engine.ContinueDesktopMotion(start.AddMilliseconds(30), profile);
 
     Near(7.2f, swipe.Desktop.MouseX, 0.001f);
+    Near(-7.2f, swipe.Desktop.MouseY, 0.001f);
     Equal(true, release.Desktop.MouseX > 0);
     Equal(true, glide.MouseX > 0);
     Equal(true, glide.MouseX < release.Desktop.MouseX);

@@ -10,7 +10,7 @@ namespace Pucky.Core.Mapping;
 /// </summary>
 public static class MacHidGamepadReport
 {
-    public const int ProtocolVersion = 2;
+    public const int ProtocolVersion = 3;
     public const int Length = 15;
 
     public static byte[] Encode(VirtualGamepadState state)
@@ -84,7 +84,11 @@ public static class MacHidGamepadReport
 
     private static void WriteTrigger(byte[] report, int offset, float value)
     {
-        var scaled = (ushort)Math.Round(Math.Clamp(value, 0, 1) * 65535f);
-        BinaryPrimitives.WriteUInt16LittleEndian(report.AsSpan(offset), scaled);
+        // Gamepad consumers normalize HID axes to -1..1, then the Xbox
+        // compatibility mapping converts the trigger axes to 0..1 buttons.
+        // Therefore a released trigger must be the signed-axis minimum, not 0.
+        var scaled = (short)Math.Round(
+            (Math.Clamp(value, 0, 1) * 65535f) + short.MinValue);
+        BinaryPrimitives.WriteInt16LittleEndian(report.AsSpan(offset), scaled);
     }
 }

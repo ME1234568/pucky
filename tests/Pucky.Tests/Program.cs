@@ -17,6 +17,7 @@ var tests = new (string Name, Action Run)[]
     ("applies radial deadzones", ApplyDeadzone),
     ("glides the cursor after a trackpad swipe", GlideTrackpadMouse),
     ("maps buttons and action layers", MapLayer),
+    ("uses full-pull trigger switches as an analog fallback", MapFullTriggerPulls),
     ("maps all four rear buttons", MapRearButtons),
     ("maps the trackpad to a D-pad", MapTrackpadDPad),
     ("encodes every macOS HID button usage", EncodeEveryMacHidButton),
@@ -77,9 +78,23 @@ static void EncodeMacHidGamepad()
     Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
     Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
     Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
-    Equal(ushort.MinValue, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(9)));
-    Equal(ushort.MaxValue, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(11)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
     Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
+}
+
+static void MapFullTriggerPulls()
+{
+    var input = new ControllerState
+    {
+        Buttons = SteamButton.LeftTriggerFull | SteamButton.RightTriggerFull,
+        LeftTrigger = 0,
+        RightTrigger = 0
+    };
+
+    var result = new MappingEngine().Map(input, MappingProfile.Default());
+    Near(1, result.Gamepad.LeftTrigger, 0.001f);
+    Near(1, result.Gamepad.RightTrigger, 0.001f);
 }
 
 var failures = 0;

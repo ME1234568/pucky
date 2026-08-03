@@ -113,18 +113,19 @@ public static class SteamControllerProtocol
         {
             Sequence = report[1],
             Buttons = buttons,
-            LeftTrigger = NormalizeTrigger(ReadInt16(report, 6)),
-            RightTrigger = NormalizeTrigger(ReadInt16(report, 8)),
+            LeftTrigger = NormalizeTrigger(ReadUInt16(report, 6)),
+            RightTrigger = NormalizeTrigger(ReadUInt16(report, 8)),
             // Triton stick Y already uses the XInput convention (up is positive).
             LeftStick = ReadAxis(report, 10, invertY: false),
             RightStick = ReadAxis(report, 14, invertY: false),
+            // Triton pad Y, like its sticks, is positive toward the top.
             LeftPad = new TrackpadState(
-                ReadAxis(report, leftPadOffset, invertY: true),
+                ReadAxis(report, leftPadOffset, invertY: false),
                 NormalizeUnsigned(ReadUInt16(report, leftPadOffset + 4)),
                 leftPadTouched,
                 buttons.HasFlag(SteamButton.LeftPadClick)),
             RightPad = new TrackpadState(
-                ReadAxis(report, rightPadOffset, invertY: true),
+                ReadAxis(report, rightPadOffset, invertY: false),
                 NormalizeUnsigned(ReadUInt16(report, rightPadOffset + 4)),
                 rightPadTouched,
                 buttons.HasFlag(SteamButton.RightPadClick)),
@@ -244,7 +245,8 @@ public static class SteamControllerProtocol
             NormalizeSigned(ReadInt16(report, sensorOffset + 10)));
     }
 
-    private static float NormalizeTrigger(short value) =>
+    // Triton trigger values are unsigned and reach full pull near 0x8000.
+    private static float NormalizeTrigger(ushort value) =>
         Math.Clamp(value / 32767f, 0f, 1f);
 
     private static float NormalizeSigned(short value) =>

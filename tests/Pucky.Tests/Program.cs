@@ -17,9 +17,100 @@ var tests = new (string Name, Action Run)[]
     ("applies radial deadzones", ApplyDeadzone),
     ("glides the cursor after a trackpad swipe", GlideTrackpadMouse),
     ("maps buttons and action layers", MapLayer),
+    ("uses full-pull trigger switches as an analog fallback", MapFullTriggerPulls),
     ("maps all four rear buttons", MapRearButtons),
-    ("maps the trackpad to a D-pad", MapTrackpadDPad)
+    ("maps the trackpad to a D-pad", MapTrackpadDPad),
+    ("encodes every macOS HID button usage", EncodeEveryMacHidButton),
+    ("encodes a macOS HID gamepad report", EncodeMacHidGamepad)
 };
+
+static void EncodeEveryMacHidButton()
+{
+    var expectedMappings = new (VirtualButton Button, int Bit)[]
+    {
+        (VirtualButton.A, 0),
+        (VirtualButton.B, 1),
+        (VirtualButton.X, 3),
+        (VirtualButton.Y, 4),
+        (VirtualButton.LeftBumper, 6),
+        (VirtualButton.RightBumper, 7),
+        (VirtualButton.Back, 10),
+        (VirtualButton.Start, 11),
+        (VirtualButton.Guide, 12),
+        (VirtualButton.LeftStick, 13),
+        (VirtualButton.RightStick, 14),
+        (VirtualButton.QuickAccess, 15)
+    };
+
+    foreach (var (button, bit) in expectedMappings)
+    {
+        var state = new VirtualGamepadState(button, Axis2.Zero, Axis2.Zero, 0, 0);
+        var report = MacHidGamepadReport.Encode(state);
+        var expectedLow = bit < 8 ? (byte)(1 << bit) : (byte)0;
+        var expectedHigh = bit >= 8 ? (byte)(1 << (bit - 8)) : (byte)0;
+        Equal(expectedLow, report[0]);
+        Equal(expectedHigh, report[1]);
+    }
+}
+
+static void EncodeMacHidGamepad()
+{
+    var state = new VirtualGamepadState(
+        VirtualButton.A |
+        VirtualButton.Y |
+        VirtualButton.RightBumper |
+        VirtualButton.Start |
+        VirtualButton.Guide |
+        VirtualButton.QuickAccess |
+        VirtualButton.RightStick |
+        VirtualButton.DPadUp |
+        VirtualButton.DPadRight,
+        new Axis2(-1, 1),
+        new Axis2(0.5f, -0.5f),
+        0,
+        1);
+
+    var report = MacHidGamepadReport.Encode(state);
+    Equal(MacHidGamepadReport.Length, report.Length);
+    Equal((byte)0x91, report[0]);
+    Equal((byte)0xD8, report[1]);
+    Equal((byte)1, report[2]);
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
+
+    var halfTriggers = MacHidGamepadReport.Encode(new VirtualGamepadState(
+        VirtualButton.None, Axis2.Zero, Axis2.Zero, 0.5f, 0.5f));
+    Equal((short)0, BinaryPrimitives.ReadInt16LittleEndian(halfTriggers.AsSpan(9)));
+    Equal((short)0, BinaryPrimitives.ReadInt16LittleEndian(halfTriggers.AsSpan(11)));
+
+    var leftTriggerOnly = MacHidGamepadReport.Encode(new VirtualGamepadState(
+        VirtualButton.None, Axis2.Zero, Axis2.Zero, 1, 0));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(leftTriggerOnly.AsSpan(9)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(leftTriggerOnly.AsSpan(11)));
+
+    var rightTriggerOnly = MacHidGamepadReport.Encode(new VirtualGamepadState(
+        VirtualButton.None, Axis2.Zero, Axis2.Zero, 0, 1));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(rightTriggerOnly.AsSpan(9)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(rightTriggerOnly.AsSpan(11)));
+}
+
+static void MapFullTriggerPulls()
+{
+    var input = new ControllerState
+    {
+        Buttons = SteamButton.LeftTriggerFull | SteamButton.RightTriggerFull,
+        LeftTrigger = 0,
+        RightTrigger = 0
+    };
+
+    var result = new MappingEngine().Map(input, MappingProfile.Default());
+    Near(1, result.Gamepad.LeftTrigger, 0.001f);
+    Near(1, result.Gamepad.RightTrigger, 0.001f);
+}
 
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -49,7 +140,7 @@ static void ParseState()
     report[4] = 0x6B; // Steam, L4, LB, right pad touch/click
     report[5] = 0x23; // LS touch, left pad touch, left grip
     WriteInt16(report, 6, 16384);
-    WriteInt16(report, 8, 32767);
+    WriteUInt16(report, 8, 32768);
     WriteInt16(report, 10, -32768);
     WriteInt16(report, 12, 32767);
     WriteInt16(report, 14, 8192);
@@ -82,6 +173,8 @@ static void ParseState()
     Near(-1, state.LeftStick.X, 0.001f);
     Near(1, state.LeftStick.Y, 0.001f);
     Near(-0.25f, state.RightStick.Y, 0.001f);
+    Near(12000 / 32767f, state.LeftPad.Position.Y, 0.001f);
+    Near(-20000 / 32768f, state.RightPad.Position.Y, 0.001f);
     Equal(true, state.RightPad.Touched);
     Equal(true, state.RightPad.Clicked);
     Equal((uint)123456, state.Imu!.Value.Timestamp);
@@ -304,7 +397,7 @@ static void GlideTrackpadMouse()
     var swipe = engine.Map(
         new ControllerState
         {
-            RightPad = new TrackpadState(new Axis2(0.2f, 0), 1, true, false),
+            RightPad = new TrackpadState(new Axis2(0.2f, 0.2f), 1, true, false),
             ReceivedAt = start.AddMilliseconds(10)
         },
         profile);
@@ -314,6 +407,7 @@ static void GlideTrackpadMouse()
     var glide = engine.ContinueDesktopMotion(start.AddMilliseconds(30), profile);
 
     Near(7.2f, swipe.Desktop.MouseX, 0.001f);
+    Near(-7.2f, swipe.Desktop.MouseY, 0.001f);
     Equal(true, release.Desktop.MouseX > 0);
     Equal(true, glide.MouseX > 0);
     Equal(true, glide.MouseX < release.Desktop.MouseX);
@@ -337,10 +431,14 @@ static void MapLayer()
             }
         ]
     };
-    var state = new ControllerState { Buttons = SteamButton.L4 | SteamButton.A };
+    var state = new ControllerState
+    {
+        Buttons = SteamButton.L4 | SteamButton.A | SteamButton.QuickAccess
+    };
     var mapped = new MappingEngine().Map(state, profile);
     Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.Y));
     Equal(false, mapped.Gamepad.Buttons.HasFlag(VirtualButton.A));
+    Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.QuickAccess));
 }
 
 static void MapRearButtons()

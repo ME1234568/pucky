@@ -48,6 +48,7 @@ const mappingTargets = [
   ["A", "A"], ["B", "B"], ["X", "X"], ["Y", "Y"],
   ["LeftBumper", "Left bumper"], ["RightBumper", "Right bumper"],
   ["Back", "View / Back"], ["Start", "Menu / Start"], ["Guide", "Steam / Guide"],
+  ["QuickAccess", "Quick Access / Options"],
   ["LeftStick", "Left stick click"], ["RightStick", "Right stick click"],
   ["DPadUp", "D-pad up"], ["DPadDown", "D-pad down"],
   ["DPadLeft", "D-pad left"], ["DPadRight", "D-pad right"]
@@ -211,8 +212,8 @@ function renderMotion() {
 
   setMotion($("#stick-l i"), state.display.leftStick, true);
   setMotion($("#stick-r i"), state.display.rightStick, true);
-  setMotion($("#pad-l i"), state.display.leftPad, false);
-  setMotion($("#pad-r i"), state.display.rightPad, false);
+  setMotion($("#pad-l i"), state.display.leftPad, true);
+  setMotion($("#pad-r i"), state.display.rightPad, true);
   requestAnimationFrame(renderMotion);
 }
 

@@ -63,8 +63,8 @@ public sealed class MappingEngine
                 buttons,
                 ClampAxis(leftStick),
                 ClampAxis(rightStick),
-                Math.Clamp(input.LeftTrigger, 0, 1),
-                Math.Clamp(input.RightTrigger, 0, 1)),
+                TriggerValue(input, SteamButton.LeftTriggerFull, input.LeftTrigger),
+                TriggerValue(input, SteamButton.RightTriggerFull, input.RightTrigger)),
             desktop);
     }
 
@@ -189,7 +189,7 @@ public sealed class MappingEngine
                 desktop = desktop with
                 {
                     ScrollX = desktop.ScrollX + (delta.X * settings.Sensitivity * 8f),
-                    ScrollY = desktop.ScrollY + (delta.Y * settings.Sensitivity * 8f)
+                    ScrollY = desktop.ScrollY - (delta.Y * settings.Sensitivity * 8f)
                 };
                 break;
             }
@@ -221,7 +221,7 @@ public sealed class MappingEngine
                 : Axis2.Zero;
             var movement = new Axis2(
                 delta.X * settings.Sensitivity * MouseScale,
-                delta.Y * settings.Sensitivity * MouseScale);
+                -delta.Y * settings.Sensitivity * MouseScale);
 
             if (motion.HadTouch && elapsed > 0)
             {
@@ -376,6 +376,12 @@ public sealed class MappingEngine
 
     private static Axis2 ClampAxis(Axis2 value) =>
         new(Math.Clamp(value.X, -1, 1), Math.Clamp(value.Y, -1, 1));
+
+    private static float TriggerValue(
+        ControllerState input,
+        SteamButton fullPressButton,
+        float analogValue) =>
+        input.IsPressed(fullPressButton) ? 1f : Math.Clamp(analogValue, 0, 1);
 
     private struct PadMotion
     {

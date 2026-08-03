@@ -100,10 +100,22 @@ public sealed class ProfileStore
         try
         {
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<MappingProfile>(
+            var profile = await JsonSerializer.DeserializeAsync<MappingProfile>(
                 stream,
                 _json,
                 cancellationToken);
+            if (profile?.ButtonMappings is not null &&
+                !profile.ButtonMappings.ContainsKey(SteamButton.QuickAccess))
+            {
+                profile = profile with
+                {
+                    ButtonMappings = new(profile.ButtonMappings)
+                    {
+                        [SteamButton.QuickAccess] = VirtualButton.QuickAccess
+                    }
+                };
+            }
+            return profile;
         }
         catch (Exception ex) when (ex is IOException or JsonException)
         {
@@ -133,7 +145,8 @@ public sealed class ProfileStore
             VirtualButton.Back | VirtualButton.Start | VirtualButton.Guide |
             VirtualButton.LeftStick | VirtualButton.RightStick |
             VirtualButton.DPadUp | VirtualButton.DPadDown |
-            VirtualButton.DPadLeft | VirtualButton.DPadRight;
+            VirtualButton.DPadLeft | VirtualButton.DPadRight |
+            VirtualButton.QuickAccess;
         foreach (var (source, target) in profile.ButtonMappings)
         {
             if (source == SteamButton.None || !Enum.IsDefined(source))

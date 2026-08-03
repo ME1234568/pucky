@@ -24,6 +24,8 @@ telemetry.
 - Windows system-wide Xbox 360 output, game-driven vibration, and an in-app
   vibration test
 - Linux system-wide Xbox-compatible `uinput` output
+- Experimental macOS system-wide HID gamepad output for appropriately signed
+  or locally security-relaxed builds
 - Native pointer/scroll output on Windows, Linux, and macOS
 - A dedicated control window that opens with Pucky, featuring live input
   visualization on the supplied controller artwork and profile editing; the
@@ -35,14 +37,26 @@ telemetry.
 | --- | --- | --- | --- | --- |
 | Windows 10/11 | Yes | Xbox 360 via ViGEmBus | Yes | Yes |
 | Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
-| macOS | Yes | Not system-wide | Yes | Direct test/output path |
+| macOS | Yes | Experimental HID gamepad | Yes | Direct test/output path |
 
-macOS does not currently provide a generally available system-wide virtual
-gamepad API. Apple documents that virtual game controllers are not reliably
-available to ordinary apps; a distributable implementation needs Apple's
-virtual-HID entitlement or a DriverKit extension. Pucky therefore exposes raw
-input, profiles, diagnostics, gyro, touchpads, and pointer output on macOS, but
-does not pretend to create a gamepad that games cannot see.
+Pucky's macOS backend streams 15-byte standard HID reports to a small native
+helper, which publishes a Razer Serval-compatible `IOHIDUserDevice`. Isolating
+the helper keeps the restricted entitlement off the CoreCLR process. The raw
+button and axis layout targets Chromium's macOS standard-gamepad mapping,
+including two independent analog trigger axes. A recognized Xbox identity is
+intentionally not used because macOS routes it through GameController, where
+arbitrary virtual-HID trigger reports are discarded. Native Steam/SDL clients
+may apply a different built-in Serval profile, so this output remains
+experimental outside Chromium. The backend is input-only, so game-driven
+rumble is not yet available; Pucky's direct vibration test still works.
+
+The helper marks its published HID as a GameController synthetic device. This
+prevents macOS from also applying its native Serval button profile and treating
+a Chromium shoulder-button usage as the configurable system Home shortcut.
+
+Creating the device requires the restricted
+`com.apple.developer.hid.virtual.device` entitlement. It is applied only to
+`pucky-hid-helper`; the main Pucky process never invokes the restricted API.
 
 Firmware updates and Puck pairing remain firmware-management operations. Do
 those once with Steam or Valve's supported tooling; normal Pucky use does not
@@ -94,6 +108,74 @@ Linux/macOS:
 ./scripts/build.sh linux-x64
 # Valid alternatives include linux-arm64, osx-x64, and osx-arm64.
 ```
+
+### macOS virtual gamepad signing
+
+For a normal-security Mac, the native helper needs an Apple-authorized HID
+Virtual Device capability, a matching provisioning profile, and appropriate
+app-bundle packaging. A paid account or signing certificate alone does not
+authorize the entitlement. The build script can sign the components with an
+authorized identity, but it does not create or embed that Apple-issued profile:
+
+```sh
+PUCKY_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  ./scripts/build.sh osx-arm64
+```
+
+For local development without a developer account, build while SIP and AMFI
+are still enabled:
+
+```sh
+PUCKY_CODESIGN_IDENTITY=- ./scripts/build.sh osx-arm64
+```
+
+This produces an unsigned `pucky` CoreCLR host and an ad-hoc-signed
+`pucky-hid-helper` carrying the restricted entitlement. Only after the build
+finishes, boot the development Mac with SIP and AMFI enforcement relaxed and
+run `artifacts/osx-arm64/pucky`. Building first matters: on some Apple Silicon
+systems, disabling SIP prevents the signed `dotnet` SDK itself from creating
+CoreCLR.
+
+If SIP is already disabled and `dotnet --info` fails, publish the managed part
+on a normal-security Mac, Windows, or Linux machine:
+
+```sh
+dotnet publish src/Pucky.App/Pucky.App.csproj \
+  --configuration Release \
+  --runtime osx-arm64 \
+  --self-contained true \
+  -p:PublishSingleFile=true \
+  -p:IncludeNativeLibrariesForSelfExtract=true \
+  --output artifacts/osx-arm64
+```
+
+Copy the complete `artifacts/osx-arm64` directory and repository to the Mac.
+Then compile and sign only the native helper without invoking the broken .NET
+SDK:
+
+```sh
+PUCKY_SKIP_DOTNET_PUBLISH=1 \
+PUCKY_CODESIGN_IDENTITY=- \
+  ./scripts/build.sh osx-arm64
+```
+
+If a downloaded or copied development artifact produces a “could not verify”
+Gatekeeper message and macOS does not offer **Open Anyway**, remove quarantine
+from only the extracted Pucky artifact directory before launching it:
+
+```sh
+xattr -dr com.apple.quarantine "/absolute/path/to/artifacts/osx-arm64"
+```
+
+Do not run this command against a broad directory such as your home folder or
+Downloads. Removing quarantine only clears the download-origin Gatekeeper
+check; it does not grant the virtual-HID entitlement or relax AMFI/SIP.
+
+An ad-hoc signature is not authorization. Pucky does not change the Mac's boot
+security policy and does not recommend weakening AMFI or SIP on a general-use
+Mac. Re-enable normal security after testing. When security is restored, this
+development artifact should no longer be expected to launch or create the HID
+device; rebuild a normal unsigned/no-HID artifact for ordinary Pucky use.
 
 Outputs go to `artifacts/<runtime>/`. Builds are self-contained and do not
 require users to install .NET.

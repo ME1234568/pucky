@@ -33,7 +33,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - run: >
+      - name: Publish application
+        if: runner.os != 'macOS'
+        run: >
           dotnet publish src/Pucky.App/Pucky.App.csproj
           --configuration Release
           --runtime ${{ matrix.rid }}
@@ -41,6 +43,11 @@ jobs:
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           --output artifacts/${{ matrix.rid }}
+      - name: Publish application and compile native HID helper
+        if: runner.os == 'macOS'
+        env:
+          PUCKY_CODESIGN_IDENTITY: '-'
+        run: ./scripts/build.sh ${{ matrix.rid }}
       - uses: actions/upload-artifact@v4
         with:
           name: pucky-${{ matrix.rid }}

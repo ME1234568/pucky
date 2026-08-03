@@ -18,7 +18,7 @@ public sealed class MacHidGamepadOutput(
     private Task<string>? _helperError;
     private DateTime _nextConnectAttempt;
 
-    public string Name => "Stadia-compatible virtual HID gamepad";
+    public string Name => "Xbox-compatible virtual HID gamepad";
 
     public bool IsConnected
     {

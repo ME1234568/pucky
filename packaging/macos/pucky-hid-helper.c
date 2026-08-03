@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-enum { REPORT_LENGTH = 16 };
+enum { REPORT_LENGTH = 15 };
 
 /*
  * IOHIDUserDevice is entitlement-gated and its header is not present in every
@@ -19,8 +19,8 @@ static create_user_device_fn create_user_device;
 static handle_report_fn handle_report;
 
 /*
- * Standards-based gamepad descriptor matching Chromium's macOS Stadia
- * Controller mapping: 18 buttons, one hat, and six signed 16-bit axes. There
+ * Standards-based gamepad descriptor matching Chromium's macOS Xbox Series X
+ * Bluetooth mapping: 16 buttons, one hat, and six signed 16-bit axes. There
  * are no report IDs, so each input packet is exactly REPORT_LENGTH bytes.
  */
 static const uint8_t report_descriptor[] = {
@@ -29,15 +29,12 @@ static const uint8_t report_descriptor[] = {
     0xA1, 0x01,       /* Collection (Application) */
     0x05, 0x09,       /*   Usage Page (Button) */
     0x19, 0x01,       /*   Usage Minimum (Button 1) */
-    0x29, 0x12,       /*   Usage Maximum (Button 18) */
+    0x29, 0x10,       /*   Usage Maximum (Button 16) */
     0x15, 0x00,       /*   Logical Minimum (0) */
     0x25, 0x01,       /*   Logical Maximum (1) */
     0x75, 0x01,       /*   Report Size (1) */
-    0x95, 0x12,       /*   Report Count (18) */
+    0x95, 0x10,       /*   Report Count (16) */
     0x81, 0x02,       /*   Input (Data, Variable, Absolute) */
-    0x75, 0x01,       /*   Report Size (1) */
-    0x95, 0x06,       /*   Report Count (6) */
-    0x81, 0x03,       /*   Input (Constant) */
     0x05, 0x01,       /*   Usage Page (Generic Desktop) */
     0x09, 0x39,       /*   Usage (Hat Switch) */
     0x15, 0x00,       /*   Logical Minimum (0) */
@@ -106,15 +103,15 @@ static CFTypeRef create_gamepad(void)
         return NULL;
     }
 
-    set_number(properties, CFSTR("VendorID"), 0x18D1);
-    set_number(properties, CFSTR("ProductID"), 0x9400);
-    set_number(properties, CFSTR("VersionNumber"), 0x0200);
+    set_number(properties, CFSTR("VendorID"), 0x045E);
+    set_number(properties, CFSTR("ProductID"), 0x0B13);
+    set_number(properties, CFSTR("VersionNumber"), 0x0509);
     set_number(properties, CFSTR("PrimaryUsagePage"), 0x01);
     set_number(properties, CFSTR("PrimaryUsage"), 0x05);
-    CFDictionarySetValue(properties, CFSTR("Manufacturer"), CFSTR("Google"));
-    CFDictionarySetValue(properties, CFSTR("Product"), CFSTR("Stadia Controller"));
+    CFDictionarySetValue(properties, CFSTR("Manufacturer"), CFSTR("Microsoft"));
+    CFDictionarySetValue(properties, CFSTR("Product"), CFSTR("Xbox Wireless Controller"));
     CFDictionarySetValue(properties, CFSTR("SerialNumber"), CFSTR("PUCKY-VIRTUAL-1"));
-    CFDictionarySetValue(properties, CFSTR("Transport"), CFSTR("USB"));
+    CFDictionarySetValue(properties, CFSTR("Transport"), CFSTR("Bluetooth"));
 
     CFDataRef descriptor = CFDataCreate(
         kCFAllocatorDefault,

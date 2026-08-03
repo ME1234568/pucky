@@ -39,7 +39,7 @@ telemetry.
 | Linux | Yes | Xbox-compatible via `uinput` | `uinput` mouse, clicks, and scrolling | Yes |
 | macOS | Yes | Experimental HID gamepad | Yes | Direct test/output path |
 
-Pucky's macOS backend streams compact Stadia Controller-compatible reports to a
+Pucky's macOS backend streams compact Xbox Series X-compatible HID reports to a
 small native helper, which publishes the `IOHIDUserDevice`. Isolating the
 helper keeps the restricted entitlement off the CoreCLR process. This
 compatibility target is recognized by Steam, SDL, and Wine/CrossOver, but
@@ -151,6 +151,18 @@ PUCKY_SKIP_DOTNET_PUBLISH=1 \
 PUCKY_CODESIGN_IDENTITY=- \
   ./scripts/build.sh osx-arm64
 ```
+
+If a downloaded or copied development artifact produces a “could not verify”
+Gatekeeper message and macOS does not offer **Open Anyway**, remove quarantine
+from only the extracted Pucky artifact directory before launching it:
+
+```sh
+xattr -dr com.apple.quarantine "/absolute/path/to/artifacts/osx-arm64"
+```
+
+Do not run this command against a broad directory such as your home folder or
+Downloads. Removing quarantine only clears the download-origin Gatekeeper
+check; it does not grant the virtual-HID entitlement or relax AMFI/SIP.
 
 An ad-hoc signature is not authorization. Pucky does not change the Mac's boot
 security policy and does not recommend weakening AMFI or SIP on a general-use

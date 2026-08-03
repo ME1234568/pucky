@@ -4,25 +4,25 @@ namespace Pucky.Core.Mapping;
 
 /// <summary>
 /// Encodes the compact input report consumed by Pucky's native macOS HID
-/// helper. The raw button and axis usages match the Stadia Controller mapping
-/// used by Chromium on macOS: 18 buttons, a hat switch, four stick axes, and
-/// two trigger axes.
+/// helper. The raw button and axis usages match the Xbox Series X Bluetooth
+/// mapping used by Chromium on macOS: 16 buttons, a hat switch, four stick
+/// axes, and two trigger axes.
 /// </summary>
 public static class MacHidGamepadReport
 {
-    public const int Length = 16;
+    public const int Length = 15;
 
     public static byte[] Encode(VirtualGamepadState state)
     {
         var report = new byte[Length];
         EncodeButtons(report, state.Buttons);
-        report[3] = EncodeHat(state.Buttons);
-        WriteAxis(report, 4, state.LeftStick.X);
-        WriteAxis(report, 6, -state.LeftStick.Y);
-        WriteAxis(report, 8, state.RightStick.X);
-        WriteTrigger(report, 10, state.LeftTrigger);
-        WriteTrigger(report, 12, state.RightTrigger);
-        WriteAxis(report, 14, -state.RightStick.Y);
+        report[2] = EncodeHat(state.Buttons);
+        WriteAxis(report, 3, state.LeftStick.X);
+        WriteAxis(report, 5, -state.LeftStick.Y);
+        WriteAxis(report, 7, state.RightStick.X);
+        WriteTrigger(report, 9, state.LeftTrigger);
+        WriteTrigger(report, 11, state.RightTrigger);
+        WriteAxis(report, 13, -state.RightStick.Y);
         return report;
     }
 
@@ -39,7 +39,7 @@ public static class MacHidGamepadReport
         SetButton(report, 12, buttons, VirtualButton.Guide);
         SetButton(report, 13, buttons, VirtualButton.LeftStick);
         SetButton(report, 14, buttons, VirtualButton.RightStick);
-        SetButton(report, 16, buttons, VirtualButton.QuickAccess);
+        SetButton(report, 15, buttons, VirtualButton.QuickAccess);
     }
 
     private static void SetButton(

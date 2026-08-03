@@ -19,8 +19,38 @@ var tests = new (string Name, Action Run)[]
     ("maps buttons and action layers", MapLayer),
     ("maps all four rear buttons", MapRearButtons),
     ("maps the trackpad to a D-pad", MapTrackpadDPad),
+    ("encodes every macOS HID button usage", EncodeEveryMacHidButton),
     ("encodes a macOS HID gamepad report", EncodeMacHidGamepad)
 };
+
+static void EncodeEveryMacHidButton()
+{
+    var expectedMappings = new (VirtualButton Button, int Bit)[]
+    {
+        (VirtualButton.A, 0),
+        (VirtualButton.B, 1),
+        (VirtualButton.X, 3),
+        (VirtualButton.Y, 4),
+        (VirtualButton.LeftBumper, 6),
+        (VirtualButton.RightBumper, 7),
+        (VirtualButton.Back, 10),
+        (VirtualButton.Start, 11),
+        (VirtualButton.Guide, 12),
+        (VirtualButton.LeftStick, 13),
+        (VirtualButton.RightStick, 14),
+        (VirtualButton.QuickAccess, 15)
+    };
+
+    foreach (var (button, bit) in expectedMappings)
+    {
+        var state = new VirtualGamepadState(button, Axis2.Zero, Axis2.Zero, 0, 0);
+        var report = MacHidGamepadReport.Encode(state);
+        var expectedLow = bit < 8 ? (byte)(1 << bit) : (byte)0;
+        var expectedHigh = bit >= 8 ? (byte)(1 << (bit - 8)) : (byte)0;
+        Equal(expectedLow, report[0]);
+        Equal(expectedHigh, report[1]);
+    }
+}
 
 static void EncodeMacHidGamepad()
 {
@@ -42,15 +72,14 @@ static void EncodeMacHidGamepad()
     var report = MacHidGamepadReport.Encode(state);
     Equal(MacHidGamepadReport.Length, report.Length);
     Equal((byte)0x91, report[0]);
-    Equal((byte)0x58, report[1]);
-    Equal((byte)0x01, report[2]);
-    Equal((byte)1, report[3]);
-    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(4)));
-    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(6)));
-    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(8)));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(10)));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(12)));
-    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(14)));
+    Equal((byte)0xD8, report[1]);
+    Equal((byte)1, report[2]);
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
+    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
+    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
+    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
+    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
 }
 
 var failures = 0;

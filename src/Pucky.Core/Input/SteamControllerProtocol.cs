@@ -119,7 +119,8 @@ public static class SteamControllerProtocol
             LeftStick = ReadAxis(report, 10, invertY: false),
             RightStick = ReadAxis(report, 14, invertY: false),
             LeftPad = new TrackpadState(
-                ReadAxis(report, leftPadOffset, invertY: true),
+                // The left pad's raw Y convention is opposite the right pad's.
+                ReadAxis(report, leftPadOffset, invertY: false),
                 NormalizeUnsigned(ReadUInt16(report, leftPadOffset + 4)),
                 leftPadTouched,
                 buttons.HasFlag(SteamButton.LeftPadClick)),

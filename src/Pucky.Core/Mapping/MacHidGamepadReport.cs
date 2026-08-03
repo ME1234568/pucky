@@ -10,6 +10,7 @@ namespace Pucky.Core.Mapping;
 /// </summary>
 public static class MacHidGamepadReport
 {
+    public const int ProtocolVersion = 2;
     public const int Length = 15;
 
     public static byte[] Encode(VirtualGamepadState state)
@@ -83,7 +84,7 @@ public static class MacHidGamepadReport
 
     private static void WriteTrigger(byte[] report, int offset, float value)
     {
-        var scaled = (int)Math.Round(Math.Clamp(value, 0, 1) * 65535f) - 32768;
-        BinaryPrimitives.WriteInt16LittleEndian(report.AsSpan(offset), (short)scaled);
+        var scaled = (ushort)Math.Round(Math.Clamp(value, 0, 1) * 65535f);
+        BinaryPrimitives.WriteUInt16LittleEndian(report.AsSpan(offset), scaled);
     }
 }

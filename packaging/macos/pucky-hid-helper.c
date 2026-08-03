@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-enum { REPORT_LENGTH = 15 };
+enum { REPORT_PROTOCOL = 2, REPORT_LENGTH = 15 };
 
 /*
  * IOHIDUserDevice is entitlement-gated and its header is not present in every
@@ -46,19 +46,31 @@ static const uint8_t report_descriptor[] = {
     0x95, 0x01,       /*   Report Count (1) */
     0x81, 0x42,       /*   Input (Data, Variable, Absolute, Null State) */
     0x65, 0x00,       /*   Unit (None) */
+    0x35, 0x00,       /*   Physical Minimum (unspecified) */
+    0x45, 0x00,       /*   Physical Maximum (unspecified) */
     0x75, 0x04,       /*   Report Size (4) */
     0x95, 0x01,       /*   Report Count (1) */
     0x81, 0x03,       /*   Input (Constant) */
     0x09, 0x30,       /*   Usage (X: left stick X) */
     0x09, 0x31,       /*   Usage (Y: left stick Y) */
     0x09, 0x32,       /*   Usage (Z: right stick X) */
+    0x16, 0x00, 0x80, /*   Logical Minimum (-32768) */
+    0x26, 0xFF, 0x7F, /*   Logical Maximum (32767) */
+    0x75, 0x10,       /*   Report Size (16) */
+    0x95, 0x03,       /*   Report Count (3) */
+    0x81, 0x02,       /*   Input (Data, Variable, Absolute) */
     0x09, 0x33,       /*   Usage (Rx: left trigger) */
     0x09, 0x34,       /*   Usage (Ry: right trigger) */
+    0x15, 0x00,       /*   Logical Minimum (0) */
+    0x27, 0xFF, 0xFF, 0x00, 0x00, /* Logical Maximum (65535) */
+    0x75, 0x10,       /*   Report Size (16) */
+    0x95, 0x02,       /*   Report Count (2) */
+    0x81, 0x02,       /*   Input (Data, Variable, Absolute) */
     0x09, 0x35,       /*   Usage (Rz: right stick Y) */
     0x16, 0x00, 0x80, /*   Logical Minimum (-32768) */
     0x26, 0xFF, 0x7F, /*   Logical Maximum (32767) */
     0x75, 0x10,       /*   Report Size (16) */
-    0x95, 0x06,       /*   Report Count (6) */
+    0x95, 0x01,       /*   Report Count (1) */
     0x81, 0x02,       /*   Input (Data, Variable, Absolute) */
     0xC0              /* End Collection */
 };
@@ -147,7 +159,7 @@ int main(void)
         return 2;
     }
 
-    fprintf(stdout, "READY %d\n", REPORT_LENGTH);
+    fprintf(stdout, "READY %d %d\n", REPORT_PROTOCOL, REPORT_LENGTH);
     uint8_t report[REPORT_LENGTH];
     size_t used = 0;
     for (;;) {

@@ -77,8 +77,8 @@ static void EncodeMacHidGamepad()
     Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
     Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
     Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
+    Equal(ushort.MinValue, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(9)));
+    Equal(ushort.MaxValue, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(11)));
     Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
 }
 
@@ -143,6 +143,8 @@ static void ParseState()
     Near(-1, state.LeftStick.X, 0.001f);
     Near(1, state.LeftStick.Y, 0.001f);
     Near(-0.25f, state.RightStick.Y, 0.001f);
+    Near(12000 / 32767f, state.LeftPad.Position.Y, 0.001f);
+    Near(20000 / 32768f, state.RightPad.Position.Y, 0.001f);
     Equal(true, state.RightPad.Touched);
     Equal(true, state.RightPad.Clicked);
     Equal((uint)123456, state.Imu!.Value.Timestamp);

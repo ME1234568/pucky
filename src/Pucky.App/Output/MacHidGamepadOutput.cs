@@ -112,7 +112,8 @@ public sealed class MacHidGamepadOutput(
                 }
 
                 var response = readyTask.GetAwaiter().GetResult();
-                var expectedResponse = $"READY {MacHidGamepadReport.Length}";
+                var expectedResponse =
+                    $"READY {MacHidGamepadReport.ProtocolVersion} {MacHidGamepadReport.Length}";
                 if (!string.Equals(response, expectedResponse, StringComparison.Ordinal))
                 {
                     StopProcess(process, process.StandardInput.BaseStream);

@@ -26,31 +26,39 @@ var tests = new (string Name, Action Run)[]
 
 static void EncodeEveryMacHidButton()
 {
-    var expectedMappings = new (VirtualButton Button, int Bit)[]
+    var expectedMappings = new (VirtualButton Button, int Offset, byte Mask)[]
     {
-        (VirtualButton.A, 0),
-        (VirtualButton.B, 1),
-        (VirtualButton.X, 3),
-        (VirtualButton.Y, 4),
-        (VirtualButton.LeftBumper, 6),
-        (VirtualButton.RightBumper, 7),
-        (VirtualButton.Back, 10),
-        (VirtualButton.Start, 11),
-        (VirtualButton.Guide, 12),
-        (VirtualButton.LeftStick, 13),
-        (VirtualButton.RightStick, 14),
-        (VirtualButton.QuickAccess, 15)
+        (VirtualButton.A, 14, 0x01),
+        (VirtualButton.B, 14, 0x02),
+        (VirtualButton.X, 14, 0x08),
+        (VirtualButton.Y, 14, 0x10),
+        (VirtualButton.LeftBumper, 14, 0x40),
+        (VirtualButton.RightBumper, 14, 0x80),
+        (VirtualButton.Start, 15, 0x08),
+        (VirtualButton.LeftStick, 15, 0x20),
+        (VirtualButton.RightStick, 15, 0x40),
+        (VirtualButton.Back, 16, 0x01),
+        (VirtualButton.Guide, 17, 0x01)
     };
 
-    foreach (var (button, bit) in expectedMappings)
+    foreach (var (button, offset, mask) in expectedMappings)
     {
         var state = new VirtualGamepadState(button, Axis2.Zero, Axis2.Zero, 0, 0);
         var report = MacHidGamepadReport.Encode(state);
-        var expectedLow = bit < 8 ? (byte)(1 << bit) : (byte)0;
-        var expectedHigh = bit >= 8 ? (byte)(1 << (bit - 8)) : (byte)0;
-        Equal(expectedLow, report[0]);
-        Equal(expectedHigh, report[1]);
+        Equal(mask, report[offset]);
     }
+
+    var quickAccess = MacHidGamepadReport.Encode(new VirtualGamepadState(
+        VirtualButton.QuickAccess, Axis2.Zero, Axis2.Zero, 0, 0));
+    Equal((byte)0, quickAccess[14]);
+    Equal((byte)0, quickAccess[15]);
+    Equal((byte)0, quickAccess[16]);
+    Equal((byte)0, quickAccess[17]);
+
+    var guide = MacHidGamepadReport.Encode(new VirtualGamepadState(
+        VirtualButton.Guide, Axis2.Zero, Axis2.Zero, 0, 0));
+    Equal((byte)0x10, guide[15]);
+    Equal((byte)0x01, guide[17]);
 }
 
 static void EncodeMacHidGamepad()
@@ -72,15 +80,23 @@ static void EncodeMacHidGamepad()
 
     var report = MacHidGamepadReport.Encode(state);
     Equal(MacHidGamepadReport.Length, report.Length);
-    Equal((byte)0x91, report[0]);
-    Equal((byte)0xD8, report[1]);
-    Equal((byte)1, report[2]);
-    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(3)));
-    Equal(short.MinValue + 1, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(5)));
-    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(7)));
-    Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(9)));
-    Equal(short.MaxValue, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(11)));
-    Equal((short)16384, BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(13)));
+    Equal((byte)0x01, report[0]);
+    Equal((ushort)0, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(1)));
+    Equal((ushort)0, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(3)));
+    Equal((ushort)49151, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(5)));
+    Equal((ushort)49151, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(7)));
+    Equal((ushort)0, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(9)));
+    Equal((ushort)1023, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(11)));
+    Equal((byte)2, report[13]);
+    Equal((byte)0x91, report[14]);
+    Equal((byte)0x58, report[15]);
+    Equal((byte)0x00, report[16]);
+    Equal((byte)0x01, report[17]);
+
+    var halfTriggers = MacHidGamepadReport.Encode(new VirtualGamepadState(
+        VirtualButton.None, Axis2.Zero, Axis2.Zero, 0.5f, 0.5f));
+    Equal((ushort)512, BinaryPrimitives.ReadUInt16LittleEndian(halfTriggers.AsSpan(9)));
+    Equal((ushort)512, BinaryPrimitives.ReadUInt16LittleEndian(halfTriggers.AsSpan(11)));
 }
 
 static void MapFullTriggerPulls()

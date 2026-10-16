@@ -25,12 +25,19 @@ else
   # Start from an empty output directory so files left over from an earlier
   # build never end up in a package.
   rm -rf "$output"
+  # PUCKY_VERSION stamps the build with that version instead of <Version> in
+  # Directory.Build.props (releases pass the git tag's version).
+  set --
+  if [ -n "${PUCKY_VERSION:-}" ]; then
+    set -- "-p:Version=${PUCKY_VERSION#v}"
+  fi
   dotnet publish "$root/src/Pucky.App/Pucky.App.csproj" \
     --configuration Release \
     --runtime "$runtime" \
     --self-contained true \
     -p:PublishSingleFile=true \
     -p:IncludeNativeLibrariesForSelfExtract=true \
+    "$@" \
     --output "$output"
 fi
 

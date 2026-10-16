@@ -31,7 +31,7 @@ if ($Version -notmatch "^[0-9A-Za-z.+-]+$") {
     throw "Invalid version: $Version"
 }
 
-& (Join-Path $PSScriptRoot "build.ps1") -Runtime $Runtime
+& (Join-Path $PSScriptRoot "build.ps1") -Runtime $Runtime -Version $Version
 
 $publish = Join-Path (Join-Path $root "artifacts") $Runtime
 $name = "pucky-$Version-$Runtime"

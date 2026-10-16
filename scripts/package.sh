@@ -40,7 +40,7 @@ case "$version" in
   ''|*[!0-9A-Za-z.+-]*) die "invalid version: $version" ;;
 esac
 
-sh "$root/scripts/build.sh" "$runtime"
+PUCKY_VERSION="$version" sh "$root/scripts/build.sh" "$runtime"
 
 publish="$root/artifacts/$runtime"
 name="pucky-$version-$runtime"

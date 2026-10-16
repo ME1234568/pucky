@@ -3,20 +3,24 @@ name: release
 # Three ways to release:
 #  1. Merge a pull request into main: releases automatically. The bump comes
 #     from the PR's labels: release:major, release:minor, or patch by default.
-#     Label the PR release:skip to merge without releasing.
-#  2. Actions > release > Run workflow on a branch: bumps <Version> in
-#     Directory.Build.props, runs the tests, commits "Release vX.Y.Z", tags it,
-#     builds every package and publishes a GitHub Release.
-#  3. Push a tag vX.Y.Z yourself: the tag must match <Version> in
-#     Directory.Build.props at that commit; no version bump is made.
+#     Label the PR release:skip to merge without releasing, and
+#     release:prerelease to mark the GitHub Release as a pre-release.
+#  2. Actions > release > Run workflow: choose the bump yourself.
+#  3. Push a tag such as 1.2.0 (or v1.2.0) yourself: that exact version is
+#     released.
 #
-# Nothing is committed, tagged or published unless the build and tests pass.
-# The tag and commit pushed by this workflow use GITHUB_TOKEN, so they do not
-# trigger this workflow (or ci) a second time.
+# The git tag is the source of truth for the version: releases only push a
+# tag, never a commit, so they work with branch protection on main. The
+# packages are built with the tagged version passed to the build;
+# <Version> in Directory.Build.props is only the base for local and CI
+# builds and the lowest version a release will pick.
+#
+# Nothing is tagged or published unless the build and tests pass. The tag
+# pushed here uses GITHUB_TOKEN, so it does not trigger this workflow again.
 on:
-  # pull_request_target (not pull_request) so the token can push the release
-  # commit even for PRs from forks. It is safe here because the workflow only
-  # checks out main after the merge, never the PR's own code.
+  # pull_request_target (not pull_request) so the token can push the tag even
+  # for PRs from forks. It is safe here because the workflow only checks out
+  # main after the merge, never the PR's own code.
   pull_request_target:
     types: [closed]
     branches: [main]
@@ -32,7 +36,7 @@ on:
         type: boolean
         default: false
   push:
-    tags: ['v*.*.*']
+    tags: ['[0-9]*.[0-9]*.[0-9]*', 'v[0-9]*.[0-9]*.[0-9]*']
 
 permissions:
   contents: read
@@ -51,23 +55,17 @@ jobs:
        !contains(github.event.pull_request.labels.*.name, 'release:skip'))
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the release commit and tag
+      contents: write # push the release tag
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
-      - name: Check trigger
-        if: github.event_name == 'workflow_dispatch' && github.ref_type != 'branch'
-        run: |
-          echo "::error::Run the release workflow from a branch (it commits the version bump), not from '${{ github.ref }}'."
-          exit 1
-
       - uses: actions/checkout@v4
         with:
           # After a merge, release the base branch as it now stands.
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || '' }}
-          # Full history and tags so existing tags can be checked.
+          # Full history and tags to find the latest release.
           fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
@@ -85,38 +83,42 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
-          props=Directory.Build.props
-          if [ "$EVENT_NAME" = pull_request_target ]; then
-            # Bump from the merged PR's labels; the largest one wins.
-            case "$PR_LABELS" in
-              *'"release:major"'*) BUMP="major" ;;
-              *'"release:minor"'*) BUMP="minor" ;;
-              *) BUMP="patch" ;;
-            esac
-            case "$PR_LABELS" in
-              *'"release:prerelease"'*) PRERELEASE_INPUT="true" ;;
-              *) PRERELEASE_INPUT="false" ;;
-            esac
-            # From here on, a merged PR is handled exactly like a manual run.
-            EVENT_NAME="workflow_dispatch"
-          fi
-          read_version() {
-            sed -n 's:.*<Version>[[:space:]]*\([^<[:space:]]*\)[[:space:]]*</Version>.*:\1:p' "$props"
-          }
 
-          current="$(read_version)"
-          if [ -z "$current" ] || [ "$(printf '%s\n' "$current" | wc -l)" -ne 1 ]; then
-            echo "::error file=$props::Expected exactly one <Version> element in $props, found: '${current}'."
-            exit 1
-          fi
-          echo "Current version: $current"
-
-          if [ "$EVENT_NAME" = workflow_dispatch ]; then
-            if ! [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              echo "::error file=$props::Cannot bump '$current'; <Version> must be MAJOR.MINOR.PATCH."
+          if [ "$EVENT_NAME" = push ]; then
+            # A pushed tag is released as is.
+            tag="$REF_NAME"
+            version="${tag#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag '$tag' is not a valid MAJOR.MINOR.PATCH[-suffix] version."
               exit 1
             fi
-            major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"; patch="${BASH_REMATCH[3]}"
+            if [[ "$version" == *-* ]]; then prerelease="true"; else prerelease="false"; fi
+          else
+            if [ "$EVENT_NAME" = pull_request_target ]; then
+              # Bump from the merged PR's labels; the largest one wins.
+              case "$PR_LABELS" in
+                *'"release:major"'*) BUMP="major" ;;
+                *'"release:minor"'*) BUMP="minor" ;;
+                *) BUMP="patch" ;;
+              esac
+              case "$PR_LABELS" in
+                *'"release:prerelease"'*) PRERELEASE_INPUT="true" ;;
+                *) PRERELEASE_INPUT="false" ;;
+              esac
+            fi
+
+            # Start from the highest existing release tag (with or without a
+            # leading v), but never below <Version> in Directory.Build.props.
+            props_version="$(sed -n 's:.*<Version>[[:space:]]*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[[:space:]]*</Version>.*:\1:p' Directory.Build.props | head -n 1)"
+            base="$(
+              { git tag --list | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p'
+                [ -n "$props_version" ] && echo "$props_version"
+              } | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1
+            )"
+            base="${base:-0.0.0}"
+            echo "Latest version: $base"
+
+            IFS=. read -r major minor patch <<< "$base"
             case "$BUMP" in
               major) major=$((major + 1)); minor=0; patch=0 ;;
               minor) minor=$((minor + 1)); patch=0 ;;
@@ -124,37 +126,20 @@ jobs:
               *) echo "::error::Unknown bump '$BUMP'."; exit 1 ;;
             esac
             version="$major.$minor.$patch"
+            tag="$version"
             prerelease="$PRERELEASE_INPUT"
 
-            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null \
-              || git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
-              echo "::error::Tag v$version already exists."
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+              || git rev-parse -q --verify "refs/tags/v$tag" >/dev/null; then
+              echo "::error::Tag $tag already exists."
               exit 1
             fi
-
-            sed -i -E "s#<Version>[[:space:]]*[^<[:space:]]*[[:space:]]*</Version>#<Version>${version}</Version>#" "$props"
-            if [ "$(read_version)" != "$version" ]; then
-              echo "::error file=$props::Failed to update <Version> to $version."
-              exit 1
-            fi
-            git diff -- "$props"
-          else
-            version="${REF_NAME#v}"
-            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-              echo "::error::Tag '$REF_NAME' is not a valid vMAJOR.MINOR.PATCH[-suffix] version."
-              exit 1
-            fi
-            if [ "$version" != "$current" ]; then
-              echo "::error file=$props::Tag '$REF_NAME' does not match <Version>$current</Version> in $props. Set <Version>$version</Version>, commit, and tag that commit (or tag v$current instead)."
-              exit 1
-            fi
-            if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
           fi
 
-          echo "Releasing v$version (prerelease: $prerelease)"
+          echo "Releasing $version as tag $tag (prerelease: $prerelease)"
           {
             echo "version=$version"
-            echo "tag=v$version"
+            echo "tag=$tag"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
@@ -167,27 +152,23 @@ jobs:
       - name: Test
         run: dotnet run --project tests/Pucky.Tests/Pucky.Tests.csproj --configuration Release --no-build
 
-      - name: Commit and tag release
+      - name: Tag release
         if: github.event_name != 'push'
         shell: bash
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          BRANCH: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref_name }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Directory.Build.props
-          git commit -m "Release v$VERSION"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          # Atomic: either both the branch and the tag are updated, or neither.
-          git push --atomic origin "HEAD:refs/heads/$BRANCH" "refs/tags/v$VERSION"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "refs/tags/$TAG"
 
   package:
     needs: prepare
     uses: ./.github/workflows/package.yml
     with:
-      # Build exactly the tagged commit so the binaries carry the released version.
+      # Build exactly the tagged commit, stamped with the released version.
       ref: refs/tags/${{ needs.prepare.outputs.tag }}
       version: ${{ needs.prepare.outputs.version }}
       retention-days: 7
@@ -221,7 +202,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Pucky ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.version }}
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           generate_release_notes: true
           fail_on_unmatched_files: true

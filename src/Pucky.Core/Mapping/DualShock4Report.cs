@@ -55,12 +55,12 @@ public static class DualShock4Report
 
         var buttons = state.Buttons;
         ushort face = EncodeHat(buttons);
-        // Positions mirror the Xbox 360 and uinput outputs, which emit
-        // VirtualButton.Y on the west face button and X on the north one.
-        if (buttons.HasFlag(VirtualButton.Y)) face |= Square;
+        // Positional, like the other outputs: X is the west face button
+        // (Square) and Y the north one (Triangle).
+        if (buttons.HasFlag(VirtualButton.X)) face |= Square;
         if (buttons.HasFlag(VirtualButton.A)) face |= Cross;
         if (buttons.HasFlag(VirtualButton.B)) face |= Circle;
-        if (buttons.HasFlag(VirtualButton.X)) face |= Triangle;
+        if (buttons.HasFlag(VirtualButton.Y)) face |= Triangle;
         if (buttons.HasFlag(VirtualButton.LeftBumper)) face |= L1;
         if (buttons.HasFlag(VirtualButton.RightBumper)) face |= R1;
         if (state.LeftTrigger > 0.02f) face |= L2;

@@ -506,13 +506,16 @@ static void EncodeDualShock4Controls()
     var face = BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(4));
     Equal(1, face & 0x0F);
     Equal(
-        DualShock4Report.Cross | DualShock4Report.Square | DualShock4Report.L1 |
+        DualShock4Report.Cross | DualShock4Report.Triangle | DualShock4Report.L1 |
         DualShock4Report.Options | DualShock4Report.L2 | DualShock4Report.R2,
         face & 0xFFF0);
     Equal(DualShock4Report.SpecialPs, report[6]);
     Equal((byte)255, report[7]);
     Equal((byte)128, report[8]);
     Equal((ushort)0x1234, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(9)));
+
+    var west = DualShock4Report.Encode(VirtualGamepadState.Neutral with { Buttons = VirtualButton.X });
+    Equal(DualShock4Report.Square, BinaryPrimitives.ReadUInt16LittleEndian(west.AsSpan(4)) & 0xFFF0);
 
     var neutral = DualShock4Report.Encode(VirtualGamepadState.Neutral);
     Equal(8, neutral[4] & 0x0F);

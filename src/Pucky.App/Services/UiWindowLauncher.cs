@@ -61,6 +61,15 @@ public sealed class UiWindowLauncher(
             else if (existing is not null)
             {
                 existing.Process.Dispose();
+                _window = null;
+            }
+
+            // The window may still be open even if its process handle can't
+            // find it (for example after the browser hands off to another
+            // process), so look for it by title before opening another.
+            if (TryFocusByTitle())
+            {
+                return;
             }
 
             _window = OpenAppWindow(Url, logger);
@@ -79,6 +88,11 @@ public sealed class UiWindowLauncher(
         }
     }
 
+    /// <summary>
+    /// Brings the process's window forward. Returns true whenever the window
+    /// exists, even if Windows declines to move focus, so a second window is
+    /// never opened just because focus was refused.
+    /// </summary>
     private static bool TryFocus(Process process)
     {
         if (!OperatingSystem.IsWindows())
@@ -94,8 +108,8 @@ public sealed class UiWindowLauncher(
             {
                 return false;
             }
-            ShowWindow(handle, 9 /* SW_RESTORE */);
-            return SetForegroundWindow(handle);
+            Focus(handle);
+            return true;
         }
         catch (InvalidOperationException)
         {
@@ -103,11 +117,107 @@ public sealed class UiWindowLauncher(
         }
     }
 
+    // Matches the page title, including the "• " unsaved-changes prefix.
+    private const string WindowTitle = "Pucky · Steam Controller";
+
+    private static bool TryFocusByTitle()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var found = IntPtr.Zero;
+        var title = new System.Text.StringBuilder(256);
+        EnumWindows((window, _) =>
+        {
+            if (!IsWindowVisible(window))
+            {
+                return true;
+            }
+            title.Clear();
+            GetWindowText(window, title, title.Capacity);
+            if (title.ToString().Contains(WindowTitle, StringComparison.Ordinal))
+            {
+                found = window;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        if (found == IntPtr.Zero)
+        {
+            return false;
+        }
+        Focus(found);
+        return true;
+    }
+
+    private static void Focus(IntPtr window)
+    {
+        // Restore only when minimized, so a maximized window stays maximized.
+        ShowWindow(window, IsIconic(window) ? 9 /* SW_RESTORE */ : 5 /* SW_SHOW */);
+        if (SetForegroundWindow(window))
+        {
+            return;
+        }
+
+        // Windows refuses focus changes from background processes; sharing
+        // input with the current foreground thread is allowed to move it.
+        var foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), out _);
+        var currentThread = GetCurrentThreadId();
+        if (foregroundThread == 0 || foregroundThread == currentThread)
+        {
+            return;
+        }
+        if (AttachThreadInput(currentThread, foregroundThread, true))
+        {
+            try
+            {
+                BringWindowToTop(window);
+                SetForegroundWindow(window);
+            }
+            finally
+            {
+                AttachThreadInput(currentThread, foregroundThread, false);
+            }
+        }
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr window, System.Text.StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr window);
+
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr window, int command);
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachInput);
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {

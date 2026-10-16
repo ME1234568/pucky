@@ -9,6 +9,7 @@ public sealed class HidSharpControllerTransport(
     private readonly object _ioLock = new();
     private HidDevice? _hidDevice;
     private HidStream? _stream;
+    private byte[]? _readBuffer;
     private int _featureReportLength = 64;
 
     public ControllerDeviceInfo? Device { get; private set; }
@@ -46,6 +47,7 @@ public sealed class HidSharpControllerTransport(
                     stream.ReadTimeout = 16;
                     _hidDevice = candidate;
                     _stream = stream;
+                    _readBuffer = new byte[Math.Max(candidate.GetMaxInputReportLength(), 64)];
                     _featureReportLength = Math.Max(candidate.GetMaxFeatureReportLength(), 64);
                     Device = new ControllerDeviceInfo(
                         candidate.DevicePath,
@@ -78,40 +80,52 @@ public sealed class HidSharpControllerTransport(
     public int Read(Span<byte> buffer)
     {
         var stream = _stream;
-        if (stream is null)
+        var readBuffer = _readBuffer;
+        if (stream is null || readBuffer is null)
         {
             return 0;
         }
 
         try
         {
-            var rented = new byte[Math.Max(buffer.Length, _hidDevice?.GetMaxInputReportLength() ?? 64)];
-            var count = stream.Read(rented, 0, rented.Length);
-            rented.AsSpan(0, Math.Min(count, buffer.Length)).CopyTo(buffer);
+            var count = stream.Read(readBuffer, 0, readBuffer.Length);
             if (SteamControllerProtocol.TryParseBatteryStatus(
-                    rented.AsSpan(0, count),
+                    readBuffer.AsSpan(0, count),
                     out var batteryPercent,
                     out var charging) &&
-                Device is not null)
+                Device is { } device &&
+                (device.BatteryPercent != batteryPercent || device.Charging != charging))
             {
-                Device = Device with
+                Device = device with
                 {
                     BatteryPercent = batteryPercent,
                     Charging = charging
                 };
             }
-            return Math.Min(count, buffer.Length);
+
+            var copied = Math.Min(count, buffer.Length);
+            readBuffer.AsSpan(0, copied).CopyTo(buffer);
+            return copied;
         }
         catch (TimeoutException)
         {
             return 0;
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            logger.LogWarning(ex, "Steam Controller disconnected");
+            logger.LogWarning("Steam Controller disconnected: {Message}", ex.Message);
             DisposeStream();
             return 0;
         }
+    }
+
+    public void Close()
+    {
+        if (_stream is not null)
+        {
+            RestoreLizardMode();
+        }
+        DisposeStream();
     }
 
     public bool DisableLizardMode()
@@ -154,7 +168,7 @@ public sealed class HidSharpControllerTransport(
             }
             return true;
         }
-        catch (Exception ex) when (ex is IOException or TimeoutException)
+        catch (Exception ex) when (ex is IOException or TimeoutException or ObjectDisposedException)
         {
             logger.LogDebug(ex, "Rumble write failed");
             return false;
@@ -186,7 +200,7 @@ public sealed class HidSharpControllerTransport(
             }
             return true;
         }
-        catch (Exception ex) when (ex is IOException or TimeoutException)
+        catch (Exception ex) when (ex is IOException or TimeoutException or ObjectDisposedException)
         {
             logger.LogDebug(ex, "Trackpad haptic pulse write failed");
             return false;
@@ -195,12 +209,7 @@ public sealed class HidSharpControllerTransport(
 
     public ValueTask DisposeAsync()
     {
-        if (_stream is not null)
-        {
-            RestoreLizardMode();
-        }
-
-        DisposeStream();
+        Close();
         return ValueTask.CompletedTask;
     }
 
@@ -224,7 +233,7 @@ public sealed class HidSharpControllerTransport(
             }
             return true;
         }
-        catch (Exception ex) when (ex is IOException or TimeoutException)
+        catch (Exception ex) when (ex is IOException or TimeoutException or ObjectDisposedException)
         {
             logger.LogDebug(ex, "Feature command 0x{Command:X2} failed", command);
             return false;
@@ -272,6 +281,7 @@ public sealed class HidSharpControllerTransport(
         {
             _stream?.Dispose();
             _stream = null;
+            _readBuffer = null;
             _hidDevice = null;
             Device = null;
         }

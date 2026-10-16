@@ -1,0 +1,35 @@
+Pucky for Linux
+===============
+
+1. One-time setup (controller + virtual gamepad permissions)
+
+   Open a terminal in this folder and run:
+
+       ./install-linux.sh
+
+   It asks for your password via sudo, then installs 70-pucky.rules to
+   /etc/udev/rules.d/, loads the uinput kernel module, makes uinput load at
+   boot (/etc/modules-load.d/pucky-uinput.conf) and reloads udev. Running it
+   again is harmless. To undo it later: ./install-linux.sh --uninstall
+
+   Steam Deck / SteamOS: the "deck" user has no password by default, so sudo
+   fails until you set one. Switch to Desktop Mode, open Konsole and run
+   "passwd" once, then run ./install-linux.sh again.
+
+2. Unplug and reconnect the Puck or controller (or reconnect Bluetooth).
+
+3. Start Pucky:
+
+       ./pucky
+
+   The settings UI opens in your browser at http://127.0.0.1:27182.
+   Profiles are stored in data/profiles next to the pucky executable, so
+   keep this folder somewhere writable (e.g. your home directory).
+
+Manual setup (equivalent to install-linux.sh):
+
+    sudo install -m 0644 70-pucky.rules /etc/udev/rules.d/70-pucky.rules
+    sudo modprobe uinput
+    echo uinput | sudo tee /etc/modules-load.d/pucky-uinput.conf
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger

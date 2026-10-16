@@ -1,36 +1,122 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Pucky.App.Profiles;
 
 namespace Pucky.App.Services;
 
 public sealed class UiWindowLauncher(
     IHostApplicationLifetime lifetime,
     IConfiguration configuration,
+    SettingsStore settings,
     ILogger<UiWindowLauncher> logger) : IHostedService
 {
+    private readonly object _gate = new();
     private ManagedBrowserWindow? _window;
+
+    /// <summary>True when started with --background or PUCKY_NO_WINDOW=1.</summary>
+    public static bool LaunchedInBackground { get; set; }
+
+    public string Url
+    {
+        get
+        {
+            var configuredUrl = configuration["PUCKY_URL"] ?? "http://127.0.0.1:27182";
+            return configuredUrl.Split(';', StringSplitOptions.RemoveEmptyEntries)[0]
+                .Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal)
+                .Replace("[::]", "127.0.0.1", StringComparison.Ordinal)
+                .Replace("+", "127.0.0.1", StringComparison.Ordinal)
+                .Replace("*", "127.0.0.1", StringComparison.Ordinal);
+        }
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (Environment.GetEnvironmentVariable("PUCKY_NO_WINDOW") == "1")
+        if (Environment.GetEnvironmentVariable("PUCKY_NO_WINDOW") == "1" ||
+            LaunchedInBackground ||
+            settings.Current.StartInBackground)
         {
+            logger.LogInformation("Pucky is running in the background at {Url}", Url);
             return Task.CompletedTask;
         }
 
-        lifetime.ApplicationStarted.Register(() =>
-        {
-            var configuredUrl = configuration["PUCKY_URL"] ?? "http://127.0.0.1:27182";
-            var url = configuredUrl.Split(';', StringSplitOptions.RemoveEmptyEntries)[0]
-                .Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal)
-                .Replace("[::]", "127.0.0.1", StringComparison.Ordinal);
-            _window = OpenAppWindow(url, logger);
-        });
+        lifetime.ApplicationStarted.Register(() => OpenWindow());
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Opens the control window, or brings the existing one forward.
+    /// </summary>
+    public void OpenWindow()
+    {
+        lock (_gate)
+        {
+            var existing = _window;
+            if (existing is { OwnsProcess: true } && !HasExited(existing.Process))
+            {
+                if (TryFocus(existing.Process))
+                {
+                    return;
+                }
+            }
+            else if (existing is not null)
+            {
+                existing.Process.Dispose();
+            }
+
+            _window = OpenAppWindow(Url, logger);
+        }
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    private static bool TryFocus(Process process)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        try
+        {
+            process.Refresh();
+            var handle = process.MainWindowHandle;
+            if (handle == IntPtr.Zero)
+            {
+                return false;
+            }
+            ShowWindow(handle, 9 /* SW_RESTORE */);
+            return SetForegroundWindow(handle);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr window, int command);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr window);
+
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        var window = _window;
-        _window = null;
+        ManagedBrowserWindow? window;
+        lock (_gate)
+        {
+            window = _window;
+            _window = null;
+        }
         if (window is null)
         {
             return;

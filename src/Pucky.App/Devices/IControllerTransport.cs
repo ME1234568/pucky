@@ -7,6 +7,8 @@ public interface IControllerTransport : IAsyncDisposable
     ControllerDeviceInfo? Device { get; }
     bool IsOpen { get; }
     bool TryOpen();
+    /// <summary>Restores lizard mode and releases the device for other apps.</summary>
+    void Close();
     int Read(Span<byte> buffer);
     bool DisableLizardMode();
     bool RestoreLizardMode();

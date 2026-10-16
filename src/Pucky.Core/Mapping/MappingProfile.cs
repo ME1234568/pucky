@@ -18,6 +18,15 @@ public enum GyroMode
     Mouse
 }
 
+/// <summary>Which rotation steers horizontal gyro output.</summary>
+public enum GyroHorizontalAxis
+{
+    /// <summary>Turning the controller left and right, like a flashlight.</summary>
+    Yaw,
+    /// <summary>Tilting the controller like a steering wheel.</summary>
+    Roll
+}
+
 [Flags]
 public enum VirtualButton : uint
 {
@@ -56,6 +65,9 @@ public sealed record GyroSettings
     public float Sensitivity { get; init; } = 1.8f;
     public float Deadzone { get; init; } = 0.02f;
     public SteamButton EnableButton { get; init; } = SteamButton.RightStickTouch;
+    public GyroHorizontalAxis HorizontalAxis { get; init; } = GyroHorizontalAxis.Yaw;
+    public bool InvertX { get; init; }
+    public bool InvertY { get; init; }
 }
 
 public sealed record ActionLayer
@@ -63,6 +75,7 @@ public sealed record ActionLayer
     public string Name { get; init; } = "Layer";
     public SteamButton HoldButton { get; init; }
     public Dictionary<SteamButton, VirtualButton> ButtonMappings { get; init; } = [];
+    public Dictionary<SteamButton, List<KeyboardKey>> KeyMappings { get; init; } = [];
 }
 
 public sealed record MappingProfile
@@ -75,6 +88,11 @@ public sealed record MappingProfile
     public PadSettings RightPad { get; init; } = new() { Mode = PadMode.Mouse, Sensitivity = 1.2f };
     public GyroSettings Gyro { get; init; } = new();
     public Dictionary<SteamButton, VirtualButton> ButtonMappings { get; init; } = DefaultButtons();
+    /// <summary>
+    /// Keyboard keys and mouse buttons held while a controller button is held.
+    /// Several keys form a chord (for example LeftCtrl + C).
+    /// </summary>
+    public Dictionary<SteamButton, List<KeyboardKey>> KeyMappings { get; init; } = [];
     public List<ActionLayer> Layers { get; init; } = [];
 
     public static MappingProfile Default() => new();

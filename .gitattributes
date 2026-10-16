@@ -1,0 +1,8 @@
+# Store text as LF in the repository whatever the local checkout uses, so
+# Windows editors saving CRLF don't show up as whole-file diffs.
+* text=auto
+
+# Shell scripts and udev rules must keep LF endings, even in a Windows
+# checkout with core.autocrlf=true, or they fail on Linux/macOS/SteamOS.
+*.sh text eol=lf
+*.rules text eol=lf

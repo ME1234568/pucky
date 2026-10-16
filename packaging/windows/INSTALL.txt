@@ -1,0 +1,17 @@
+Pucky for Windows
+=================
+
+1. Install the ViGEmBus driver (required for the virtual Xbox 360 controller):
+
+       https://github.com/nefarius/ViGEmBus/releases
+
+   Reboot if the installer asks you to.
+
+2. Run pucky.exe from this folder.
+
+   The settings UI opens at http://127.0.0.1:27182. Profiles are stored in
+   data\profiles next to pucky.exe, so keep this folder somewhere writable
+   (not C:\Program Files).
+
+If Windows SmartScreen warns about an unrecognized app, choose
+"More info" > "Run anyway". The build is not code-signed.

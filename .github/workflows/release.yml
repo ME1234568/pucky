@@ -1,0 +1,195 @@
+name: release
+
+# Two ways to release:
+#  1. Actions > release > Run workflow on a branch: bumps <Version> in
+#     Directory.Build.props, runs the tests, commits "Release vX.Y.Z", tags it,
+#     builds every package and publishes a GitHub Release.
+#  2. Push a tag vX.Y.Z yourself: the tag must match <Version> in
+#     Directory.Build.props at that commit; no version bump is made.
+#
+# The tag and commit pushed by this workflow use GITHUB_TOKEN, so they do not
+# trigger this workflow (or ci) a second time.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version component to bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      prerelease:
+        description: Mark the GitHub Release as a pre-release
+        type: boolean
+        default: false
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release commit and tag
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check trigger
+        if: github.event_name == 'workflow_dispatch' && github.ref_type != 'branch'
+        run: |
+          echo "::error::Run the release workflow from a branch (it commits the version bump), not from '${{ github.ref }}'."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          # Full history and tags so existing tags can be checked.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Determine version
+        id: version
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BUMP: ${{ inputs.bump }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          props=Directory.Build.props
+          read_version() {
+            sed -n 's:.*<Version>[[:space:]]*\([^<[:space:]]*\)[[:space:]]*</Version>.*:\1:p' "$props"
+          }
+
+          current="$(read_version)"
+          if [ -z "$current" ] || [ "$(printf '%s\n' "$current" | wc -l)" -ne 1 ]; then
+            echo "::error file=$props::Expected exactly one <Version> element in $props, found: '${current}'."
+            exit 1
+          fi
+          echo "Current version: $current"
+
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            if ! [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "::error file=$props::Cannot bump '$current'; <Version> must be MAJOR.MINOR.PATCH."
+              exit 1
+            fi
+            major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"; patch="${BASH_REMATCH[3]}"
+            case "$BUMP" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+              *) echo "::error::Unknown bump '$BUMP'."; exit 1 ;;
+            esac
+            version="$major.$minor.$patch"
+            prerelease="$PRERELEASE_INPUT"
+
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null \
+              || git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+              echo "::error::Tag v$version already exists."
+              exit 1
+            fi
+
+            sed -i -E "s#<Version>[[:space:]]*[^<[:space:]]*[[:space:]]*</Version>#<Version>${version}</Version>#" "$props"
+            if [ "$(read_version)" != "$version" ]; then
+              echo "::error file=$props::Failed to update <Version> to $version."
+              exit 1
+            fi
+            git diff -- "$props"
+          else
+            version="${REF_NAME#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag '$REF_NAME' is not a valid vMAJOR.MINOR.PATCH[-suffix] version."
+              exit 1
+            fi
+            if [ "$version" != "$current" ]; then
+              echo "::error file=$props::Tag '$REF_NAME' does not match <Version>$current</Version> in $props. Set <Version>$version</Version>, commit, and tag that commit (or tag v$current instead)."
+              exit 1
+            fi
+            if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
+          fi
+
+          echo "Releasing v$version (prerelease: $prerelease)"
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore Pucky.sln
+
+      - name: Build
+        run: dotnet build Pucky.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet run --project tests/Pucky.Tests/Pucky.Tests.csproj --configuration Release --no-build
+
+      - name: Commit and tag release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Directory.Build.props
+          git commit -m "Release v$VERSION"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          # Atomic: either both the branch and the tag are updated, or neither.
+          git push --atomic origin "HEAD:refs/heads/$BRANCH" "refs/tags/v$VERSION"
+
+  package:
+    needs: prepare
+    uses: ./.github/workflows/package.yml
+    with:
+      # Build exactly the tagged commit so the binaries carry the released version.
+      ref: refs/tags/${{ needs.prepare.outputs.tag }}
+      version: ${{ needs.prepare.outputs.version }}
+      retention-days: 7
+
+  release:
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release and upload assets
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pucky-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify packages and write checksums
+        shell: bash
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ls -l
+          count="$(find . -maxdepth 1 -type f \( -name 'pucky-*.zip' -o -name 'pucky-*.tar.gz' \) | wc -l)"
+          if [ "$count" -ne 6 ]; then
+            echo "::error::Expected 6 packages, found $count."
+            exit 1
+          fi
+          sha256sum pucky-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Pucky ${{ needs.prepare.outputs.tag }}
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/*

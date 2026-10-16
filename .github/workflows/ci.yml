@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Pucky.sln
+
+      - name: Build
+        run: dotnet build Pucky.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet run --project tests/Pucky.Tests/Pucky.Tests.csproj --configuration Release --no-build
+
+  package:
+    needs: test
+    uses: ./.github/workflows/package.yml
+    with:
+      retention-days: 14

@@ -3,7 +3,12 @@
     <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>pucky</AssemblyName>
     <RootNamespace>Pucky.App</RootNamespace>
+    <ApplicationIcon>pucky.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The content root is the build output, so "dotnet run" needs the UI there too. -->
+    <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pucky.Core\Pucky.Core.csproj" />
     <PackageReference Include="HidSharp" Version="2.6.4" />

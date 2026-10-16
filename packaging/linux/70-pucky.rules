@@ -1,6 +1,22 @@
-# Steam Controller 2026 over USB, Bluetooth HID, and the Puck.
-KERNEL=="hidraw*", ATTRS{idVendor}=="28de", MODE="0660", TAG+="uaccess"
-KERNEL=="hidraw*", KERNELS=="*28DE:1303*", MODE="0660", TAG+="uaccess"
+# udev rules for Pucky (Steam Controller 2026 mapper).
+#
+# Install with ./install-linux.sh (recommended), or manually:
+#   sudo install -m 0644 70-pucky.rules /etc/udev/rules.d/70-pucky.rules
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# The file must sort before 73-seat-late.rules so systemd-logind turns the
+# "uaccess" tag into an ACL for the user logged in at the local seat.
 
-# Allow Pucky to create its virtual gamepad.
+# Steam Controller 2026 wired (28de:1302) and the Puck receiver (28de:1304)
+# over USB. USB hidraw nodes expose the vendor on the USB parent device.
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="28de", MODE="0660", TAG+="uaccess"
+
+# Bluetooth/BLE hidraw nodes have no USB parent, so ATTRS{idVendor} never
+# matches. Match the parent HID device name instead, which the kernel formats
+# as BUS:VENDOR:PRODUCT.INSTANCE in upper-case hex (e.g. 0005:28DE:1303.0004).
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", KERNELS=="*:28DE:130[234].*", MODE="0660", TAG+="uaccess"
+
+# Allow Pucky to create its virtual gamepad through /dev/uinput. The uinput
+# module must be available; install-linux.sh loads it and adds
+# /etc/modules-load.d/pucky-uinput.conf so it is loaded at every boot.
 KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", TAG+="uaccess", OPTIONS+="static_node=uinput"

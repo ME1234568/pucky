@@ -21,7 +21,13 @@ var tests = new (string Name, Action Run)[]
     ("maps all four rear buttons", MapRearButtons),
     ("maps the trackpad to a D-pad", MapTrackpadDPad),
     ("encodes every macOS HID button usage", EncodeEveryMacHidButton),
-    ("encodes a macOS HID gamepad report", EncodeMacHidGamepad)
+    ("encodes a macOS HID gamepad report", EncodeMacHidGamepad),
+    ("encodes DualShock 4 buttons, hat, sticks and triggers", EncodeDualShock4Controls),
+    ("converts Triton motion into DualShock 4 units", EncodeDualShock4Motion),
+    ("tracks keys across both KeySet words", TrackKeySet),
+    ("maps key chords and lets layers override them", MapKeyBindings),
+    ("steers gyro output by yaw or roll with inversion", MapGyroAxes),
+    ("accelerates the trackpad mouse by finger speed", AccelerateTrackpadMouse)
 };
 
 static void EncodeEveryMacHidButton()
@@ -383,7 +389,8 @@ static void GlideTrackpadMouse()
         {
             Mode = PadMode.Mouse,
             Sensitivity = 1,
-            Deadzone = 0
+            Deadzone = 0,
+            Acceleration = 0
         }
     };
     var start = DateTimeOffset.UtcNow;
@@ -480,6 +487,164 @@ static void MapTrackpadDPad()
     var mapped = new MappingEngine().Map(state, profile);
     Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.DPadUp));
     Equal(true, mapped.Gamepad.Buttons.HasFlag(VirtualButton.DPadRight));
+}
+
+static void EncodeDualShock4Controls()
+{
+    var state = new VirtualGamepadState(
+        VirtualButton.A | VirtualButton.Y | VirtualButton.LeftBumper | VirtualButton.Start |
+        VirtualButton.Guide | VirtualButton.DPadUp | VirtualButton.DPadRight,
+        new Axis2(1, 1),
+        new Axis2(-1, 0),
+        1,
+        0.5f);
+    var report = DualShock4Report.Encode(state, timestamp: 0x1234);
+
+    Equal(DualShock4Report.Length, report.Length);
+    Equal((byte)255, report[0]);
+    Equal((byte)0, report[1]);
+    Equal((byte)0, report[2]);
+    Equal((byte)128, report[3]);
+    var face = BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(4));
+    Equal(1, face & 0x0F);
+    Equal(
+        DualShock4Report.Cross | DualShock4Report.Triangle | DualShock4Report.L1 |
+        DualShock4Report.Options | DualShock4Report.L2 | DualShock4Report.R2,
+        face & 0xFFF0);
+    Equal(DualShock4Report.SpecialPs, report[6]);
+    Equal((byte)255, report[7]);
+    Equal((byte)128, report[8]);
+    Equal((ushort)0x1234, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(9)));
+
+    var west = DualShock4Report.Encode(VirtualGamepadState.Neutral with { Buttons = VirtualButton.X });
+    Equal(DualShock4Report.Square, BinaryPrimitives.ReadUInt16LittleEndian(west.AsSpan(4)) & 0xFFF0);
+
+    var neutral = DualShock4Report.Encode(VirtualGamepadState.Neutral);
+    Equal(8, neutral[4] & 0x0F);
+    Equal((short)8192, BinaryPrimitives.ReadInt16LittleEndian(neutral.AsSpan(20)));
+}
+
+static void EncodeDualShock4Motion()
+{
+    var imu = new ImuState(0, new Axis2(-0.25f, 0), 0.5f, new Axis2(0.5f, 0.1f), 0.25f);
+    var state = VirtualGamepadState.Neutral with { Motion = imu };
+    var report = DualShock4Report.Encode(state);
+
+    short At(int offset) => BinaryPrimitives.ReadInt16LittleEndian(report.AsSpan(offset));
+    Equal((short)16000, At(12));
+    Equal((short)8000, At(14));
+    Equal((short)-3200, At(16));
+    Equal((short)-4096, At(18));
+    Equal((short)8192, At(20));
+    Equal((short)0, At(22));
+}
+
+static void TrackKeySet()
+{
+    var keys = KeySet.Of(KeyboardKey.A, KeyboardKey.WheelRight, KeyboardKey.None);
+    Equal(true, keys.Contains(KeyboardKey.A));
+    Equal(true, keys.Contains(KeyboardKey.WheelRight));
+    Equal(false, keys.Contains(KeyboardKey.B));
+    Equal(true, (int)KeyboardKey.WheelRight >= 64);
+    Equal("A,WheelRight", string.Join(",", keys.Keys()));
+
+    var remaining = keys.Except(KeySet.Of(KeyboardKey.WheelRight));
+    Equal(KeySet.Of(KeyboardKey.A), remaining);
+    Equal(true, remaining.Except(remaining).IsEmpty);
+}
+
+static void MapKeyBindings()
+{
+    var profile = MappingProfile.Default() with
+    {
+        KeyMappings = new()
+        {
+            [SteamButton.A] = [KeyboardKey.LeftCtrl, KeyboardKey.C],
+            [SteamButton.B] = [KeyboardKey.Escape]
+        },
+        Layers =
+        [
+            new ActionLayer
+            {
+                Name = "Shift",
+                HoldButton = SteamButton.L4,
+                KeyMappings = new() { [SteamButton.A] = [KeyboardKey.MouseBack] }
+            }
+        ]
+    };
+    var engine = new MappingEngine();
+
+    var chord = engine.Map(new ControllerState { Buttons = SteamButton.A }, profile);
+    Equal(KeySet.Of(KeyboardKey.LeftCtrl, KeyboardKey.C), chord.Desktop.Keys);
+    Equal(true, chord.Gamepad.Buttons.HasFlag(VirtualButton.A));
+
+    var layered = engine.Map(
+        new ControllerState { Buttons = SteamButton.L4 | SteamButton.A | SteamButton.B },
+        profile);
+    Equal(KeySet.Of(KeyboardKey.MouseBack, KeyboardKey.Escape), layered.Desktop.Keys);
+    Equal(false, layered.Gamepad.Buttons.HasFlag(VirtualButton.A));
+    Equal(true, layered.Gamepad.Buttons.HasFlag(VirtualButton.B));
+}
+
+static void MapGyroAxes()
+{
+    var imu = new ImuState(0, Axis2.Zero, 0, new Axis2(0.2f, 0.3f), 0.4f);
+
+    var yaw = MappingEngine.GyroToScreen(imu, new GyroSettings());
+    Near(-0.4f, yaw.X, 0.0001f);
+    Near(-0.2f, yaw.Y, 0.0001f);
+
+    var roll = MappingEngine.GyroToScreen(
+        imu,
+        new GyroSettings { HorizontalAxis = GyroHorizontalAxis.Roll, InvertX = true, InvertY = true });
+    Near(-0.3f, roll.X, 0.0001f);
+    Near(0.2f, roll.Y, 0.0001f);
+}
+
+static void AccelerateTrackpadMouse()
+{
+    // Moves the right pad along X in equal steps at 4 ms (250 Hz) and returns
+    // the total horizontal mouse travel.
+    static float Travel(float acceleration, float step, int reports, bool jitter = false)
+    {
+        var engine = new MappingEngine();
+        var profile = MappingProfile.Default() with
+        {
+            RightPad = new PadSettings
+            {
+                Mode = PadMode.Mouse,
+                Sensitivity = 1,
+                Deadzone = 0,
+                Acceleration = acceleration
+            }
+        };
+        var start = DateTimeOffset.UtcNow;
+        var total = 0f;
+        for (var index = 0; index <= reports; index++)
+        {
+            var x = jitter ? (index % 2 == 0 ? 0 : step) : step * index;
+            var mapped = engine.Map(
+                new ControllerState
+                {
+                    RightPad = new TrackpadState(new Axis2(x, 0), 1, true, false),
+                    ReceivedAt = start.AddMilliseconds(index * 4)
+                },
+                profile);
+            total += jitter ? Math.Abs(mapped.Desktop.MouseX) : mapped.Desktop.MouseX;
+        }
+        return total;
+    }
+
+    // 0.001 units per 4 ms is 0.25 units/s: slow and precise.
+    var slowLinear = Travel(0, 0.001f, 50);
+    Near(0.05f * 36, slowLinear, 0.01f);
+    Equal(true, Travel(1, 0.001f, 50) < slowLinear * 0.5f);
+
+    // A resting finger's back-and-forth jitter is damped hard.
+    Equal(true, Travel(1, 0.002f, 50, jitter: true) < Travel(0, 0.002f, 50, jitter: true) * 0.5f);
+
+    // 0.03 units per 4 ms is 7.5 units/s: a fast swipe goes further.
+    Equal(true, Travel(1, 0.03f, 20) > Travel(0, 0.03f, 20) * 2);
 }
 
 static void WriteInt16(byte[] data, int offset, short value) =>

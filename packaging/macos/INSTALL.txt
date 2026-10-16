@@ -1,0 +1,29 @@
+Pucky for macOS
+===============
+
+Run Pucky from Terminal inside this folder:
+
+    ./pucky
+
+The settings UI opens in your browser at http://127.0.0.1:27182. Profiles are
+stored in data/profiles next to the pucky executable, so keep this folder
+somewhere writable.
+
+Gatekeeper / quarantine
+-----------------------
+This build is not notarized. If macOS says it "cannot verify" pucky and does
+not offer "Open Anyway" in System Settings > Privacy & Security, remove the
+download quarantine from THIS extracted folder only:
+
+    xattr -dr com.apple.quarantine "/absolute/path/to/this/pucky-folder"
+
+Never run that command on a broad directory such as your home folder or
+Downloads. Removing quarantine only clears the download-origin check.
+
+Virtual gamepad output
+----------------------
+pucky-hid-helper is ad-hoc signed with Apple's restricted HID virtual-device
+entitlement. macOS only honors that on a development Mac with SIP/AMFI
+enforcement relaxed; on a normal-security Mac the virtual gamepad is not
+available. See the project README for details. Pucky never changes your Mac's
+security settings, and relaxing them on a general-use Mac is not recommended.

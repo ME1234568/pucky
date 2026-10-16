@@ -1,20 +1,36 @@
 param(
     [ValidateSet("win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64")]
     [string]$Runtime = "win-x64",
-    [switch]$FrameworkDependent
+    [switch]$FrameworkDependent,
+    # Stamps the build with this version instead of <Version> in
+    # Directory.Build.props (releases pass the git tag's version).
+    [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$output = Join-Path $root "artifacts\$Runtime"
+$project = Join-Path (Join-Path (Join-Path $root "src") "Pucky.App") "Pucky.App.csproj"
+$output = Join-Path (Join-Path $root "artifacts") $Runtime
 $selfContained = if ($FrameworkDependent) { "false" } else { "true" }
 
-dotnet publish "$root\src\Pucky.App\Pucky.App.csproj" `
+# Start from an empty output directory so files left over from an earlier
+# build (or a different publish layout) never end up in a package.
+if (Test-Path -LiteralPath $output) {
+    Remove-Item -LiteralPath $output -Recurse -Force
+}
+
+$versionArgs = @()
+if ($Version) {
+    $versionArgs = @("-p:Version=$($Version -replace '^v', '')")
+}
+
+dotnet publish $project `
     --configuration Release `
     --runtime $Runtime `
     --self-contained $selfContained `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
+    @versionArgs `
     --output $output
 
 if ($LASTEXITCODE -ne 0) {

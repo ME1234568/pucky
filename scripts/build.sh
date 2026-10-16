@@ -2,8 +2,17 @@
 set -eu
 
 runtime="${1:-linux-x64}"
-root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 output="$root/artifacts/$runtime"
+
+case "$runtime" in
+  win-x64|win-arm64|linux-x64|linux-arm64|osx-x64|osx-arm64) ;;
+  *)
+    printf 'Unsupported runtime: %s\n' "$runtime" >&2
+    printf '%s\n' 'Expected one of: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64' >&2
+    exit 2
+    ;;
+esac
 
 if [ "${PUCKY_SKIP_DOTNET_PUBLISH:-0}" = "1" ]; then
   if [ ! -f "$output/pucky" ]; then
@@ -13,12 +22,22 @@ if [ "${PUCKY_SKIP_DOTNET_PUBLISH:-0}" = "1" ]; then
   fi
   printf 'Using the existing managed publish at %s\n' "$output"
 else
+  # Start from an empty output directory so files left over from an earlier
+  # build never end up in a package.
+  rm -rf "$output"
+  # PUCKY_VERSION stamps the build with that version instead of <Version> in
+  # Directory.Build.props (releases pass the git tag's version).
+  set --
+  if [ -n "${PUCKY_VERSION:-}" ]; then
+    set -- "-p:Version=${PUCKY_VERSION#v}"
+  fi
   dotnet publish "$root/src/Pucky.App/Pucky.App.csproj" \
     --configuration Release \
     --runtime "$runtime" \
     --self-contained true \
     -p:PublishSingleFile=true \
     -p:IncludeNativeLibrariesForSelfExtract=true \
+    "$@" \
     --output "$output"
 fi
 

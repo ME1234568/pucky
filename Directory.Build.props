@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
+    <!-- Base version for local and CI builds. Releases are versioned by their
+         git tag (see .github/workflows/release.yml), which is passed to the
+         build, so this does not need bumping for each release. -->
     <Version>1.1.0</Version>
   </PropertyGroup>
 </Project>

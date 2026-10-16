@@ -1,0 +1,78 @@
+name: package
+
+# Reusable workflow: builds a release package for every supported runtime and
+# uploads each one as a workflow artifact named pucky-<rid>.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (branch, tag or SHA) to build. Defaults to the triggering commit.
+        type: string
+        default: ''
+      version:
+        description: Version for the archive names. Defaults to <Version> in Directory.Build.props.
+        type: string
+        default: ''
+      retention-days:
+        description: How long to keep the uploaded artifacts.
+        type: number
+        default: 14
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-latest
+            rid: win-arm64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-latest
+            rid: linux-arm64
+          - os: macos-latest
+            rid: osx-arm64
+          # macos-latest is Apple Silicon; clang cross-compiles the native
+          # helper with -arch x86_64 and dotnet publishes osx-x64 directly.
+          - os: macos-latest
+            rid: osx-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PUCKY_VERSION: ${{ inputs.version }}
+        run: ./scripts/package.ps1 -Runtime '${{ matrix.rid }}' -Version "$env:PUCKY_VERSION"
+
+      - name: Package (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          PUCKY_VERSION: ${{ inputs.version }}
+          # Unsigned pucky host + ad-hoc signed HID helper (see README).
+          PUCKY_CODESIGN_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
+        run: sh ./scripts/package.sh '${{ matrix.rid }}' "$PUCKY_VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pucky-${{ matrix.rid }}
+          path: artifacts/dist/pucky-*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+          # Archives are already compressed.
+          compression-level: 0

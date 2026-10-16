@@ -1,3 +1,4 @@
+using System.Reflection;
 using Pucky.App.Devices;
 using Pucky.App.Output;
 using Pucky.App.Profiles;
@@ -7,14 +8,19 @@ using Pucky.Core.Mapping;
 namespace Pucky.App.Services;
 
 public sealed record PuckyStatus(
+    string Version,
     bool Enabled,
+    string? PausedReason,
     bool ControllerConnected,
     ControllerDeviceInfo? Device,
     bool VirtualControllerConnected,
     string Output,
+    GamepadOutputType OutputType,
+    IReadOnlyList<GamepadOutputType> SupportedOutputTypes,
     string? OutputError,
     string DesktopOutput,
     string ActiveProfile,
+    string ActiveProfileId,
     long ReportsReceived,
     bool VibrationActive,
     string? LastError,
@@ -22,19 +28,31 @@ public sealed record PuckyStatus(
 
 public sealed record PuckyLiveFrame(long ReportsReceived, ControllerState? State);
 
-public sealed class ControllerService(
-    IControllerTransport transport,
-    VirtualOutputFactory outputFactory,
-    ProfileStore profiles,
-    ILogger<ControllerService> logger) : BackgroundService
+public sealed class ControllerService : BackgroundService
 {
+    private static readonly TimeSpan OutputRetryInterval = TimeSpan.FromSeconds(5);
+    public static readonly string Version = typeof(ControllerService).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        .Split('+')[0] ?? "dev";
+
+    private readonly IControllerTransport _transport;
+    private readonly VirtualOutputFactory _outputFactory;
+    private readonly ProfileStore _profiles;
+    private readonly SettingsStore _settings;
+    private readonly HandOffMonitor _handOff;
+    private readonly ILogger<ControllerService> _logger;
     private readonly MappingEngine _mapping = new();
     private readonly TrackpadHapticEngine _trackpadHaptics = new();
-    private readonly IVirtualOutput _output = outputFactory.Create();
     private readonly IDesktopOutput _desktop = DesktopOutputFactory.Create();
     private readonly object _statusLock = new();
+    private IVirtualOutput _output;
+    private GamepadOutputType _outputType;
+    private volatile bool _outputChangeRequested;
     private volatile bool _enabled = true;
+    private bool _active;
+    private string? _pausedReason;
     private ControllerState? _liveState;
+    private KeySet _heldKeys;
     private long _reportsReceived;
     private string? _lastError;
     private OutputFeedback _gameRumble = new(0, 0);
@@ -43,28 +61,56 @@ public sealed class ControllerService(
     private DateTime _testRumbleUntil = DateTime.MinValue;
     private DateTime _lastHeartbeat = DateTime.MinValue;
     private DateTime _lastRumble = DateTime.MinValue;
+    private DateTime _nextOutputAttempt = DateTime.MinValue;
+
+    public ControllerService(
+        IControllerTransport transport,
+        VirtualOutputFactory outputFactory,
+        ProfileStore profiles,
+        SettingsStore settings,
+        HandOffMonitor handOff,
+        ILogger<ControllerService> logger)
+    {
+        _transport = transport;
+        _outputFactory = outputFactory;
+        _profiles = profiles;
+        _settings = settings;
+        _handOff = handOff;
+        _logger = logger;
+        _outputType = EffectiveOutputType(settings.Current.OutputType);
+        _output = outputFactory.Create(_outputType);
+        _output.FeedbackReceived += OnFeedback;
+        settings.Changed += updated =>
+        {
+            if (EffectiveOutputType(updated.OutputType) != _outputType)
+            {
+                _outputChangeRequested = true;
+            }
+        };
+    }
 
     public void Enable() => _enabled = true;
 
-    public void Disable()
-    {
-        _enabled = false;
-        _mapping.Reset();
-    }
+    public void Disable() => _enabled = false;
 
     public PuckyStatus GetStatus()
     {
         lock (_statusLock)
         {
             return new PuckyStatus(
+                Version,
                 _enabled,
-                transport.IsOpen,
-                transport.Device,
+                _pausedReason,
+                _transport.IsOpen,
+                _transport.Device,
                 _output.IsConnected,
                 _output.Name,
+                _outputType,
+                VirtualOutputFactory.SupportedTypes(),
                 _output.UnavailableReason,
                 _desktop.Name,
-                profiles.Active.Name,
+                _profiles.Active.Name,
+                _profiles.Active.Id,
                 _reportsReceived,
                 IsVibrationActive(),
                 _lastError,
@@ -82,7 +128,7 @@ public sealed class ControllerService(
 
     public bool TestVibration()
     {
-        if (!transport.IsOpen)
+        if (!_transport.IsOpen)
         {
             return false;
         }
@@ -98,17 +144,17 @@ public sealed class ControllerService(
 
     public bool TestTrackpadHaptics()
     {
-        if (!transport.IsOpen)
+        if (!_transport.IsOpen)
         {
             return false;
         }
 
-        var left = transport.SendTrackpadHapticPulse(
+        var left = _transport.SendTrackpadHapticPulse(
             TrackpadHapticSide.Left,
             1360,
             900,
             2);
-        var right = transport.SendTrackpadHapticPulse(
+        var right = _transport.SendTrackpadHapticPulse(
             TrackpadHapticSide.Right,
             1360,
             900,
@@ -120,22 +166,43 @@ public sealed class ControllerService(
     {
         // Ensure hardware probing cannot delay the web host from starting.
         await Task.Yield();
-        await profiles.InitializeAsync(stoppingToken);
-        _output.FeedbackReceived += OnFeedback;
+        await _profiles.InitializeAsync(stoppingToken);
         var report = new byte[128];
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (!_enabled)
+            if (_outputChangeRequested)
             {
-                Deactivate();
+                SwitchOutput();
+            }
+
+            var pauseReason = !_enabled
+                ? "Mapping is off"
+                : _handOff.ActiveProcess is { } process
+                    ? $"Handed off while {process} is running"
+                    : null;
+            if (pauseReason is not null)
+            {
+                if (_active || _transport.IsOpen)
+                {
+                    Deactivate();
+                }
+                SetPaused(pauseReason);
                 await Task.Delay(250, stoppingToken);
                 continue;
             }
+            SetPaused(null);
 
-            if (!transport.IsOpen)
+            if (!_transport.IsOpen)
             {
-                if (!transport.TryOpen())
+                if (_active)
+                {
+                    // The controller vanished mid-session: never leave the
+                    // virtual pad, keys, or mouse buttons stuck down.
+                    ReleaseOutputs();
+                    _active = false;
+                }
+                if (!_transport.TryOpen())
                 {
                     await Task.Delay(1000, stoppingToken);
                     continue;
@@ -143,26 +210,36 @@ public sealed class ControllerService(
                 _mapping.Reset();
                 _trackpadHaptics.Reset();
                 _lastError = null;
-                if (!transport.DisableLizardMode())
+                if (!_transport.DisableLizardMode())
                 {
                     SetError("Controller opened, but lizard mode could not be disabled.");
                 }
                 _lastHeartbeat = DateTime.UtcNow;
             }
+            _active = true;
 
-            if (!_output.IsConnected)
+            if (!_output.IsConnected && DateTime.UtcNow >= _nextOutputAttempt)
             {
-                _output.Connect();
+                // Retrying every report would recreate the ViGEm client and
+                // log a stack trace hundreds of times per second.
+                if (!_output.Connect())
+                {
+                    _nextOutputAttempt = DateTime.UtcNow + OutputRetryInterval;
+                }
             }
 
             MaintainController();
-            var count = transport.Read(report);
+            var count = _transport.Read(report);
             if (count <= 0)
             {
-                _desktop.Submit(
-                    _mapping.ContinueDesktopMotion(
-                        DateTimeOffset.UtcNow,
-                        profiles.Active));
+                if (_transport.IsOpen)
+                {
+                    _desktop.Submit(
+                        _mapping.ContinueDesktopMotion(
+                            DateTimeOffset.UtcNow,
+                            _profiles.Active,
+                            _heldKeys));
+                }
                 await Task.Yield();
                 continue;
             }
@@ -175,10 +252,11 @@ public sealed class ControllerService(
                 continue;
             }
 
-            var mapped = _mapping.Map(state, profiles.Active);
-            foreach (var pulse in _trackpadHaptics.Update(state, profiles.Active))
+            var profile = _profiles.Active;
+            var mapped = _mapping.Map(state, profile);
+            foreach (var pulse in _trackpadHaptics.Update(state, profile))
             {
-                transport.SendTrackpadHapticPulse(
+                _transport.SendTrackpadHapticPulse(
                     pulse.Side,
                     pulse.OnMicroseconds,
                     pulse.OffMicroseconds,
@@ -186,6 +264,7 @@ public sealed class ControllerService(
             }
             _output.Submit(mapped.Gamepad);
             _desktop.Submit(mapped.Desktop);
+            _heldKeys = mapped.Desktop.Keys;
             lock (_statusLock)
             {
                 _liveState = state;
@@ -201,7 +280,33 @@ public sealed class ControllerService(
         _output.FeedbackReceived -= OnFeedback;
         _desktop.Dispose();
         _output.Dispose();
-        await transport.DisposeAsync();
+        await _transport.DisposeAsync();
+    }
+
+    private static GamepadOutputType EffectiveOutputType(GamepadOutputType requested) =>
+        VirtualOutputFactory.Supports(requested) ? requested : GamepadOutputType.Xbox360;
+
+    private void SwitchOutput()
+    {
+        _outputChangeRequested = false;
+        var type = EffectiveOutputType(_settings.Current.OutputType);
+        if (type == _outputType)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Switching virtual gamepad to {OutputType}", type);
+        _output.FeedbackReceived -= OnFeedback;
+        _output.Dispose();
+        var output = _outputFactory.Create(type);
+        output.FeedbackReceived += OnFeedback;
+        lock (_statusLock)
+        {
+            _output = output;
+            _outputType = type;
+            _gameRumble = new OutputFeedback(0, 0);
+        }
+        _nextOutputAttempt = DateTime.MinValue;
     }
 
     private void MaintainController()
@@ -209,7 +314,7 @@ public sealed class ControllerService(
         var now = DateTime.UtcNow;
         if ((now - _lastHeartbeat).TotalMilliseconds >= 800)
         {
-            transport.DisableLizardMode();
+            _transport.DisableLizardMode();
             _lastHeartbeat = now;
         }
 
@@ -233,19 +338,53 @@ public sealed class ControllerService(
         }
     }
 
+    /// <summary>
+    /// Releases the controller back to its built-in behavior and other apps,
+    /// and removes the virtual gamepad so games fall back to the real device.
+    /// </summary>
     private void Deactivate()
     {
-        if (transport.IsOpen)
+        if (_transport.IsOpen)
         {
-            transport.SetRumble(0, 0);
+            _transport.SetRumble(0, 0);
             _lastSentRumble = new OutputFeedback(0, 0);
-            transport.RestoreLizardMode();
         }
+        _transport.Close();
+        ReleaseOutputs();
         _output.Disconnect();
+        _active = false;
+    }
+
+    private void ReleaseOutputs()
+    {
+        try
+        {
+            _output.Submit(VirtualGamepadState.Neutral);
+            _desktop.Submit(DesktopState.Idle);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            _logger.LogDebug(ex, "Could not release outputs");
+        }
+        _heldKeys = KeySet.Empty;
+        _mapping.Reset();
         _trackpadHaptics.Reset();
         lock (_statusLock)
         {
             _liveState = null;
+            _gameRumble = new OutputFeedback(0, 0);
+        }
+    }
+
+    private void SetPaused(string? reason)
+    {
+        if (_pausedReason == reason)
+        {
+            return;
+        }
+        lock (_statusLock)
+        {
+            _pausedReason = reason;
         }
     }
 
@@ -267,7 +406,7 @@ public sealed class ControllerService(
 
     private bool SendRumble(OutputFeedback feedback)
     {
-        var sent = transport.SetRumble(
+        var sent = _transport.SetRumble(
             (ushort)(feedback.LargeMotor * 257),
             (ushort)(feedback.SmallMotor * 257));
         if (sent)
@@ -289,6 +428,6 @@ public sealed class ControllerService(
         {
             _lastError = error;
         }
-        logger.LogWarning("{Error}", error);
+        _logger.LogWarning("{Error}", error);
     }
 }

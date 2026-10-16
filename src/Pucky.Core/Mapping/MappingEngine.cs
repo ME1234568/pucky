@@ -7,7 +7,12 @@ public sealed record VirtualGamepadState(
     Axis2 LeftStick,
     Axis2 RightStick,
     float LeftTrigger,
-    float RightTrigger);
+    float RightTrigger,
+    ImuState? Motion = null)
+{
+    public static readonly VirtualGamepadState Neutral =
+        new(VirtualButton.None, Axis2.Zero, Axis2.Zero, 0, 0);
+}
 
 public sealed record DesktopState(
     float MouseX,
@@ -15,7 +20,26 @@ public sealed record DesktopState(
     float ScrollX,
     float ScrollY,
     bool LeftClick,
-    bool RightClick);
+    bool RightClick,
+    KeySet Keys = default)
+{
+    public static readonly DesktopState Idle = new(0, 0, 0, 0, false, false);
+
+    /// <summary>
+    /// Held keys including pad clicks, so outputs can treat every key and
+    /// mouse button uniformly.
+    /// </summary>
+    public KeySet HeldKeys
+    {
+        get
+        {
+            var keys = Keys;
+            if (LeftClick) keys = keys.With(KeyboardKey.MouseLeft);
+            if (RightClick) keys = keys.With(KeyboardKey.MouseRight);
+            return keys;
+        }
+    }
+}
 
 public sealed record MappingResult(VirtualGamepadState Gamepad, DesktopState Desktop);
 
@@ -26,21 +50,36 @@ public sealed class MappingEngine
     private const float MouseGlideFriction = 8f;
     private const float MouseGlideStopSpeed = 5f;
     private const float MouseMaxGlideSpeed = 5000f;
+    // Pointer acceleration, in pad units per second (the pad is 2 units
+    // wide). Speed is smoothed over ~30 ms so random jitter from a resting
+    // finger averages out instead of reading as movement.
+    private const float AccelerationSmoothingSeconds = 0.03f;
+    private const float AccelerationSlowSpeed = 0.4f;
+    private const float AccelerationFastSpeed = 4f;
+    private const float AccelerationSlowGain = 0.35f;
+    private const float AccelerationFastGain = 3f;
+    private const float AccelerationMinGain = 0.05f;
+    // Triton gyro full scale is +/-2000 degrees per second.
+    private const float GyroFullScaleDegrees = 2000f;
+    // Pixels per degree at 1x sensitivity; matches the original per-report
+    // feel at the controller's ~248 Hz report rate.
+    private const float GyroMousePixelsPerDegree = 1.5f;
     private PadMotion _leftPadMotion;
     private PadMotion _rightPadMotion;
+    private DateTimeOffset _lastGyroUpdate;
 
     public MappingResult Map(ControllerState input, MappingProfile profile)
     {
-        var buttons = MapButtons(input, profile);
+        var (buttons, keys) = MapButtons(input, profile);
         var leftStick = ApplyRadialDeadzone(input.LeftStick, profile.LeftStickDeadzone);
         var rightStick = ApplyRadialDeadzone(input.RightStick, profile.RightStickDeadzone);
-        var desktop = new DesktopState(0, 0, 0, 0, false, false);
+        var desktop = DesktopState.Idle with { Keys = keys };
 
+        // Each trackpad's joystick mode drives the stick on its own side.
         ApplyPad(
             input.LeftPad,
             profile.LeftPad,
             ref leftStick,
-            ref rightStick,
             ref buttons,
             ref desktop,
             input.ReceivedAt,
@@ -49,14 +88,13 @@ public sealed class MappingEngine
         ApplyPad(
             input.RightPad,
             profile.RightPad,
-            ref leftStick,
             ref rightStick,
             ref buttons,
             ref desktop,
             input.ReceivedAt,
             ref _rightPadMotion);
 
-        ApplyGyro(input, profile.Gyro, ref rightStick, ref desktop);
+        ApplyGyro(input, profile.Gyro, ref rightStick, ref desktop, ref _lastGyroUpdate);
 
         return new MappingResult(
             new VirtualGamepadState(
@@ -64,15 +102,17 @@ public sealed class MappingEngine
                 ClampAxis(leftStick),
                 ClampAxis(rightStick),
                 TriggerValue(input, SteamButton.LeftTriggerFull, input.LeftTrigger),
-                TriggerValue(input, SteamButton.RightTriggerFull, input.RightTrigger)),
+                TriggerValue(input, SteamButton.RightTriggerFull, input.RightTrigger),
+                input.Imu),
             desktop);
     }
 
     public DesktopState ContinueDesktopMotion(
         DateTimeOffset timestamp,
-        MappingProfile profile)
+        MappingProfile profile,
+        KeySet heldKeys = default)
     {
-        var desktop = new DesktopState(0, 0, 0, 0, false, false);
+        var desktop = DesktopState.Idle with { Keys = heldKeys };
         if (profile.LeftPad.Mode == PadMode.Mouse)
         {
             ApplyMouseGlide(timestamp, ref desktop, ref _leftPadMotion);
@@ -88,6 +128,7 @@ public sealed class MappingEngine
     {
         _leftPadMotion = default;
         _rightPadMotion = default;
+        _lastGyroUpdate = default;
     }
 
     public static Axis2 ApplyRadialDeadzone(Axis2 value, float deadzone)
@@ -104,47 +145,89 @@ public sealed class MappingEngine
         return new Axis2(value.X * factor, value.Y * factor);
     }
 
-    private static VirtualButton MapButtons(ControllerState input, MappingProfile profile)
+    /// <summary>
+    /// Resolves gamepad and keyboard outputs. A held layer replaces both the
+    /// gamepad and keyboard binding of every source it mentions; later layers
+    /// win over earlier ones. Runs without per-report allocations.
+    /// </summary>
+    private static (VirtualButton Buttons, KeySet Keys) MapButtons(
+        ControllerState input,
+        MappingProfile profile)
     {
-        var mappings = profile.ButtonMappings;
-        foreach (var layer in profile.Layers)
+        var output = VirtualButton.None;
+        var keys = KeySet.Empty;
+        var claimed = SteamButton.None;
+
+        for (var index = profile.Layers.Count - 1; index >= 0; index--)
         {
-            if (layer.HoldButton != SteamButton.None && input.IsPressed(layer.HoldButton))
+            var layer = profile.Layers[index];
+            if (layer.HoldButton == SteamButton.None || !input.IsPressed(layer.HoldButton))
             {
-                mappings = MergeMappings(mappings, layer.ButtonMappings);
+                continue;
             }
+
+            var layerSources = SteamButton.None;
+            foreach (var (source, target) in layer.ButtonMappings)
+            {
+                layerSources |= source;
+                if ((claimed & source) == 0 && input.IsPressed(source))
+                {
+                    output |= target;
+                }
+            }
+            if (layer.KeyMappings is not null)
+            {
+                foreach (var (source, targets) in layer.KeyMappings)
+                {
+                    layerSources |= source;
+                    if ((claimed & source) == 0 && input.IsPressed(source))
+                    {
+                        keys = AddKeys(keys, targets);
+                    }
+                }
+            }
+            claimed |= layerSources;
         }
 
-        VirtualButton output = VirtualButton.None;
-        foreach (var (source, target) in mappings)
+        foreach (var (source, target) in profile.ButtonMappings)
         {
-            if (input.IsPressed(source))
+            if ((claimed & source) == 0 && input.IsPressed(source))
             {
                 output |= target;
             }
         }
-
-        return output;
-    }
-
-    private static Dictionary<SteamButton, VirtualButton> MergeMappings(
-        Dictionary<SteamButton, VirtualButton> baseMappings,
-        Dictionary<SteamButton, VirtualButton> overrides)
-    {
-        var merged = new Dictionary<SteamButton, VirtualButton>(baseMappings);
-        foreach (var mapping in overrides)
+        if (profile.KeyMappings is not null)
         {
-            merged[mapping.Key] = mapping.Value;
+            foreach (var (source, targets) in profile.KeyMappings)
+            {
+                if ((claimed & source) == 0 && input.IsPressed(source))
+                {
+                    keys = AddKeys(keys, targets);
+                }
+            }
         }
 
-        return merged;
+        return (output, keys);
+    }
+
+    private static KeySet AddKeys(KeySet keys, List<KeyboardKey>? targets)
+    {
+        if (targets is null)
+        {
+            return keys;
+        }
+
+        foreach (var key in targets)
+        {
+            keys = keys.With(key);
+        }
+        return keys;
     }
 
     private static void ApplyPad(
         TrackpadState pad,
         PadSettings settings,
-        ref Axis2 leftStick,
-        ref Axis2 rightStick,
+        ref Axis2 stick,
         ref VirtualButton buttons,
         ref DesktopState desktop,
         DateTimeOffset timestamp,
@@ -174,7 +257,7 @@ public sealed class MappingEngine
         switch (settings.Mode)
         {
             case PadMode.Joystick:
-                rightStick = value;
+                stick = value;
                 break;
             case PadMode.DPad:
                 buttons |= ToDPad(value);
@@ -219,9 +302,9 @@ public sealed class MappingEngine
                     pad.Position.X - motion.LastPosition.X,
                     pad.Position.Y - motion.LastPosition.Y)
                 : Axis2.Zero;
-            var movement = new Axis2(
-                delta.X * settings.Sensitivity * MouseScale,
-                -delta.Y * settings.Sensitivity * MouseScale);
+            var gain = settings.Sensitivity * MouseScale *
+                       AccelerationGain(delta, elapsed, settings.Acceleration, ref motion);
+            var movement = new Axis2(delta.X * gain, -delta.Y * gain);
 
             if (motion.HadTouch && elapsed > 0)
             {
@@ -256,6 +339,7 @@ public sealed class MappingEngine
 
         var released = motion.HadTouch && !pad.Touched;
         motion.HadTouch = false;
+        motion.PadVelocity = Axis2.Zero;
         if (pad.Touched)
         {
             motion.Velocity = Axis2.Zero;
@@ -275,6 +359,45 @@ public sealed class MappingEngine
         }
 
         ApplyMouseGlide(timestamp, ref desktop, ref motion);
+    }
+
+    /// <summary>
+    /// Scales pad movement by finger speed: below the slow speed movement is
+    /// damped, above the fast speed it is amplified, with a smooth curve in
+    /// between. <paramref name="acceleration"/> blends from linear (0) to the
+    /// full curve (1) and beyond.
+    /// </summary>
+    private static float AccelerationGain(
+        Axis2 delta,
+        float elapsed,
+        float acceleration,
+        ref PadMotion motion)
+    {
+        if (!motion.HadTouch || elapsed <= 0)
+        {
+            // First contact: there is no movement to scale yet.
+            motion.PadVelocity = Axis2.Zero;
+            return 1f;
+        }
+
+        var instantaneous = new Axis2(delta.X / elapsed, delta.Y / elapsed);
+        var blend = 1 - MathF.Exp(-elapsed / AccelerationSmoothingSeconds);
+        motion.PadVelocity = new Axis2(
+            motion.PadVelocity.X + ((instantaneous.X - motion.PadVelocity.X) * blend),
+            motion.PadVelocity.Y + ((instantaneous.Y - motion.PadVelocity.Y) * blend));
+        if (acceleration <= 0)
+        {
+            return 1f;
+        }
+
+        var t = Math.Clamp(
+            (motion.PadVelocity.Length - AccelerationSlowSpeed) /
+            (AccelerationFastSpeed - AccelerationSlowSpeed),
+            0f,
+            1f);
+        var curve = AccelerationSlowGain +
+                    ((AccelerationFastGain - AccelerationSlowGain) * t * t * (3 - (2 * t)));
+        return Math.Max(AccelerationMinGain, 1 + ((curve - 1) * acceleration));
     }
 
     private static void ApplyMouseGlide(
@@ -342,12 +465,31 @@ public sealed class MappingEngine
         return buttons;
     }
 
+    /// <summary>
+    /// Converts Triton IMU axes to screen motion. The controller reports
+    /// gravity on Z when lying flat, so yaw is rotation about Z, pitch about X,
+    /// and roll about Y (matching SDL's Triton sensor mapping).
+    /// </summary>
+    public static Axis2 GyroToScreen(ImuState imu, GyroSettings settings)
+    {
+        var horizontal = settings.HorizontalAxis == GyroHorizontalAxis.Roll
+            ? imu.GyroscopeXY.Y
+            : -imu.GyroscopeZ;
+        var vertical = -imu.GyroscopeXY.X;
+        return new Axis2(
+            settings.InvertX ? -horizontal : horizontal,
+            settings.InvertY ? -vertical : vertical);
+    }
+
     private static void ApplyGyro(
         ControllerState input,
         GyroSettings settings,
         ref Axis2 rightStick,
-        ref DesktopState desktop)
+        ref DesktopState desktop,
+        ref DateTimeOffset lastUpdate)
     {
+        var previous = lastUpdate;
+        lastUpdate = input.ReceivedAt;
         if (settings.Mode == GyroMode.Disabled ||
             input.Imu is null ||
             (settings.EnableButton != SteamButton.None && !input.IsPressed(settings.EnableButton)))
@@ -355,21 +497,30 @@ public sealed class MappingEngine
             return;
         }
 
-        var gyro = ApplyRadialDeadzone(input.Imu.Value.GyroscopeXY, settings.Deadzone);
-        gyro = new Axis2(
-            gyro.Y * settings.Sensitivity,
-            -gyro.X * settings.Sensitivity);
+        var gyro = ApplyRadialDeadzone(
+            GyroToScreen(input.Imu.Value, settings),
+            settings.Deadzone);
 
         if (settings.Mode == GyroMode.RightStick)
         {
-            rightStick = ClampAxis(new Axis2(rightStick.X + gyro.X, rightStick.Y + gyro.Y));
+            rightStick = ClampAxis(new Axis2(
+                rightStick.X + (gyro.X * settings.Sensitivity),
+                rightStick.Y - (gyro.Y * settings.Sensitivity)));
         }
         else if (settings.Mode == GyroMode.Mouse)
         {
+            var elapsed = ElapsedSeconds(previous, input.ReceivedAt);
+            if (elapsed <= 0)
+            {
+                return;
+            }
+
+            var scale = GyroFullScaleDegrees * elapsed * settings.Sensitivity *
+                        GyroMousePixelsPerDegree;
             desktop = desktop with
             {
-                MouseX = desktop.MouseX + (gyro.X * 12f),
-                MouseY = desktop.MouseY + (gyro.Y * 12f)
+                MouseX = desktop.MouseX + (gyro.X * scale),
+                MouseY = desktop.MouseY + (gyro.Y * scale)
             };
         }
     }
@@ -387,6 +538,8 @@ public sealed class MappingEngine
     {
         public Axis2 LastPosition;
         public Axis2 Velocity;
+        /// <summary>Smoothed finger velocity in pad units per second.</summary>
+        public Axis2 PadVelocity;
         public DateTimeOffset LastUpdate;
         public bool HadTouch;
         public bool Gliding;

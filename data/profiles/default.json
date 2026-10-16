@@ -7,6 +7,7 @@
     "mode": "DPad",
     "sensitivity": 1,
     "deadzone": 0.08,
+    "acceleration": 1,
     "clickRequired": false,
     "hapticsEnabled": true,
     "hapticIntensity": 0.65
@@ -15,6 +16,7 @@
     "mode": "Mouse",
     "sensitivity": 1.2,
     "deadzone": 0.08,
+    "acceleration": 1,
     "clickRequired": false,
     "hapticsEnabled": true,
     "hapticIntensity": 0.65

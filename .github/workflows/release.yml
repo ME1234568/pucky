@@ -1,15 +1,25 @@
 name: release
 
-# Two ways to release:
-#  1. Actions > release > Run workflow on a branch: bumps <Version> in
+# Three ways to release:
+#  1. Merge a pull request into main: releases automatically. The bump comes
+#     from the PR's labels: release:major, release:minor, or patch by default.
+#     Label the PR release:skip to merge without releasing.
+#  2. Actions > release > Run workflow on a branch: bumps <Version> in
 #     Directory.Build.props, runs the tests, commits "Release vX.Y.Z", tags it,
 #     builds every package and publishes a GitHub Release.
-#  2. Push a tag vX.Y.Z yourself: the tag must match <Version> in
+#  3. Push a tag vX.Y.Z yourself: the tag must match <Version> in
 #     Directory.Build.props at that commit; no version bump is made.
 #
+# Nothing is committed, tagged or published unless the build and tests pass.
 # The tag and commit pushed by this workflow use GITHUB_TOKEN, so they do not
 # trigger this workflow (or ci) a second time.
 on:
+  # pull_request_target (not pull_request) so the token can push the release
+  # commit even for PRs from forks. It is safe here because the workflow only
+  # checks out main after the merge, never the PR's own code.
+  pull_request_target:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump:
@@ -33,6 +43,12 @@ concurrency:
 
 jobs:
   prepare:
+    # A closed PR only releases when it was merged and isn't labelled
+    # release:skip.
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      (github.event.pull_request.merged &&
+       !contains(github.event.pull_request.labels.*.name, 'release:skip'))
     runs-on: ubuntu-latest
     permissions:
       contents: write # push the release commit and tag
@@ -49,6 +65,8 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          # After a merge, release the base branch as it now stands.
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || '' }}
           # Full history and tags so existing tags can be checked.
           fetch-depth: 0
 
@@ -64,9 +82,24 @@ jobs:
           BUMP: ${{ inputs.bump }}
           PRERELEASE_INPUT: ${{ inputs.prerelease }}
           REF_NAME: ${{ github.ref_name }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
           props=Directory.Build.props
+          if [ "$EVENT_NAME" = pull_request_target ]; then
+            # Bump from the merged PR's labels; the largest one wins.
+            case "$PR_LABELS" in
+              *'"release:major"'*) BUMP="major" ;;
+              *'"release:minor"'*) BUMP="minor" ;;
+              *) BUMP="patch" ;;
+            esac
+            case "$PR_LABELS" in
+              *'"release:prerelease"'*) PRERELEASE_INPUT="true" ;;
+              *) PRERELEASE_INPUT="false" ;;
+            esac
+            # From here on, a merged PR is handled exactly like a manual run.
+            EVENT_NAME="workflow_dispatch"
+          fi
           read_version() {
             sed -n 's:.*<Version>[[:space:]]*\([^<[:space:]]*\)[[:space:]]*</Version>.*:\1:p' "$props"
           }
@@ -135,11 +168,11 @@ jobs:
         run: dotnet run --project tests/Pucky.Tests/Pucky.Tests.csproj --configuration Release --no-build
 
       - name: Commit and tag release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'push'
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.ref || github.ref_name }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

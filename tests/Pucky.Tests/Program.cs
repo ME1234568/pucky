@@ -26,7 +26,8 @@ var tests = new (string Name, Action Run)[]
     ("converts Triton motion into DualShock 4 units", EncodeDualShock4Motion),
     ("tracks keys across both KeySet words", TrackKeySet),
     ("maps key chords and lets layers override them", MapKeyBindings),
-    ("steers gyro output by yaw or roll with inversion", MapGyroAxes)
+    ("steers gyro output by yaw or roll with inversion", MapGyroAxes),
+    ("accelerates the trackpad mouse by finger speed", AccelerateTrackpadMouse)
 };
 
 static void EncodeEveryMacHidButton()
@@ -388,7 +389,8 @@ static void GlideTrackpadMouse()
         {
             Mode = PadMode.Mouse,
             Sensitivity = 1,
-            Deadzone = 0
+            Deadzone = 0,
+            Acceleration = 0
         }
     };
     var start = DateTimeOffset.UtcNow;
@@ -597,6 +599,52 @@ static void MapGyroAxes()
         new GyroSettings { HorizontalAxis = GyroHorizontalAxis.Roll, InvertX = true, InvertY = true });
     Near(-0.3f, roll.X, 0.0001f);
     Near(0.2f, roll.Y, 0.0001f);
+}
+
+static void AccelerateTrackpadMouse()
+{
+    // Moves the right pad along X in equal steps at 4 ms (250 Hz) and returns
+    // the total horizontal mouse travel.
+    static float Travel(float acceleration, float step, int reports, bool jitter = false)
+    {
+        var engine = new MappingEngine();
+        var profile = MappingProfile.Default() with
+        {
+            RightPad = new PadSettings
+            {
+                Mode = PadMode.Mouse,
+                Sensitivity = 1,
+                Deadzone = 0,
+                Acceleration = acceleration
+            }
+        };
+        var start = DateTimeOffset.UtcNow;
+        var total = 0f;
+        for (var index = 0; index <= reports; index++)
+        {
+            var x = jitter ? (index % 2 == 0 ? 0 : step) : step * index;
+            var mapped = engine.Map(
+                new ControllerState
+                {
+                    RightPad = new TrackpadState(new Axis2(x, 0), 1, true, false),
+                    ReceivedAt = start.AddMilliseconds(index * 4)
+                },
+                profile);
+            total += jitter ? Math.Abs(mapped.Desktop.MouseX) : mapped.Desktop.MouseX;
+        }
+        return total;
+    }
+
+    // 0.001 units per 4 ms is 0.25 units/s: slow and precise.
+    var slowLinear = Travel(0, 0.001f, 50);
+    Near(0.05f * 36, slowLinear, 0.01f);
+    Equal(true, Travel(1, 0.001f, 50) < slowLinear * 0.5f);
+
+    // A resting finger's back-and-forth jitter is damped hard.
+    Equal(true, Travel(1, 0.002f, 50, jitter: true) < Travel(0, 0.002f, 50, jitter: true) * 0.5f);
+
+    // 0.03 units per 4 ms is 7.5 units/s: a fast swipe goes further.
+    Equal(true, Travel(1, 0.03f, 20) > Travel(0, 0.03f, 20) * 2);
 }
 
 static void WriteInt16(byte[] data, int offset, short value) =>

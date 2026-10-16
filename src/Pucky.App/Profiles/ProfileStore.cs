@@ -281,6 +281,7 @@ public sealed class ProfileStore
     {
         Sensitivity = Math.Clamp(pad.Sensitivity, 0, 50),
         Deadzone = Math.Clamp(pad.Deadzone, 0, 0.95f),
+        Acceleration = Math.Clamp(pad.Acceleration, 0, 2),
         HapticIntensity = Math.Clamp(pad.HapticIntensity, 0, 1)
     };
 

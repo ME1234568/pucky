@@ -50,6 +50,15 @@ public sealed class MappingEngine
     private const float MouseGlideFriction = 8f;
     private const float MouseGlideStopSpeed = 5f;
     private const float MouseMaxGlideSpeed = 5000f;
+    // Pointer acceleration, in pad units per second (the pad is 2 units
+    // wide). Speed is smoothed over ~30 ms so random jitter from a resting
+    // finger averages out instead of reading as movement.
+    private const float AccelerationSmoothingSeconds = 0.03f;
+    private const float AccelerationSlowSpeed = 0.4f;
+    private const float AccelerationFastSpeed = 4f;
+    private const float AccelerationSlowGain = 0.35f;
+    private const float AccelerationFastGain = 3f;
+    private const float AccelerationMinGain = 0.05f;
     // Triton gyro full scale is +/-2000 degrees per second.
     private const float GyroFullScaleDegrees = 2000f;
     // Pixels per degree at 1x sensitivity; matches the original per-report
@@ -293,9 +302,9 @@ public sealed class MappingEngine
                     pad.Position.X - motion.LastPosition.X,
                     pad.Position.Y - motion.LastPosition.Y)
                 : Axis2.Zero;
-            var movement = new Axis2(
-                delta.X * settings.Sensitivity * MouseScale,
-                -delta.Y * settings.Sensitivity * MouseScale);
+            var gain = settings.Sensitivity * MouseScale *
+                       AccelerationGain(delta, elapsed, settings.Acceleration, ref motion);
+            var movement = new Axis2(delta.X * gain, -delta.Y * gain);
 
             if (motion.HadTouch && elapsed > 0)
             {
@@ -330,6 +339,7 @@ public sealed class MappingEngine
 
         var released = motion.HadTouch && !pad.Touched;
         motion.HadTouch = false;
+        motion.PadVelocity = Axis2.Zero;
         if (pad.Touched)
         {
             motion.Velocity = Axis2.Zero;
@@ -349,6 +359,45 @@ public sealed class MappingEngine
         }
 
         ApplyMouseGlide(timestamp, ref desktop, ref motion);
+    }
+
+    /// <summary>
+    /// Scales pad movement by finger speed: below the slow speed movement is
+    /// damped, above the fast speed it is amplified, with a smooth curve in
+    /// between. <paramref name="acceleration"/> blends from linear (0) to the
+    /// full curve (1) and beyond.
+    /// </summary>
+    private static float AccelerationGain(
+        Axis2 delta,
+        float elapsed,
+        float acceleration,
+        ref PadMotion motion)
+    {
+        if (!motion.HadTouch || elapsed <= 0)
+        {
+            // First contact: there is no movement to scale yet.
+            motion.PadVelocity = Axis2.Zero;
+            return 1f;
+        }
+
+        var instantaneous = new Axis2(delta.X / elapsed, delta.Y / elapsed);
+        var blend = 1 - MathF.Exp(-elapsed / AccelerationSmoothingSeconds);
+        motion.PadVelocity = new Axis2(
+            motion.PadVelocity.X + ((instantaneous.X - motion.PadVelocity.X) * blend),
+            motion.PadVelocity.Y + ((instantaneous.Y - motion.PadVelocity.Y) * blend));
+        if (acceleration <= 0)
+        {
+            return 1f;
+        }
+
+        var t = Math.Clamp(
+            (motion.PadVelocity.Length - AccelerationSlowSpeed) /
+            (AccelerationFastSpeed - AccelerationSlowSpeed),
+            0f,
+            1f);
+        var curve = AccelerationSlowGain +
+                    ((AccelerationFastGain - AccelerationSlowGain) * t * t * (3 - (2 * t)));
+        return Math.Max(AccelerationMinGain, 1 + ((curve - 1) * acceleration));
     }
 
     private static void ApplyMouseGlide(
@@ -489,6 +538,8 @@ public sealed class MappingEngine
     {
         public Axis2 LastPosition;
         public Axis2 Velocity;
+        /// <summary>Smoothed finger velocity in pad units per second.</summary>
+        public Axis2 PadVelocity;
         public DateTimeOffset LastUpdate;
         public bool HadTouch;
         public bool Gliding;

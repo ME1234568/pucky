@@ -54,6 +54,11 @@ public sealed record PadSettings
     public PadMode Mode { get; init; } = PadMode.Disabled;
     public float Sensitivity { get; init; } = 1f;
     public float Deadzone { get; init; } = 0.08f;
+    /// <summary>
+    /// Mouse mode pointer acceleration: 0 is linear, 1 makes slow movements
+    /// (and a resting finger's jitter) move less and fast swipes move further.
+    /// </summary>
+    public float Acceleration { get; init; } = 1f;
     public bool ClickRequired { get; init; }
     public bool HapticsEnabled { get; init; } = true;
     public float HapticIntensity { get; init; } = 0.65f;

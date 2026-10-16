@@ -39,10 +39,12 @@ const controls = {
   leftPadMode: $("#left-pad-mode"),
   leftPadSensitivity: $("#left-pad-sensitivity"),
   leftPadDeadzone: $("#left-pad-deadzone"),
+  leftPadAcceleration: $("#left-pad-acceleration"),
   leftPadClick: $("#left-pad-click"),
   rightPadMode: $("#right-pad-mode"),
   rightPadSensitivity: $("#right-pad-sensitivity"),
   rightPadDeadzone: $("#right-pad-deadzone"),
+  rightPadAcceleration: $("#right-pad-acceleration"),
   rightPadClick: $("#right-pad-click"),
   leftPadHaptics: $("#left-pad-haptics"),
   rightPadHaptics: $("#right-pad-haptics"),
@@ -249,10 +251,12 @@ function populateProfile(profile) {
   controls.leftPadMode.value = profile.leftPad.mode;
   controls.leftPadSensitivity.value = profile.leftPad.sensitivity;
   controls.leftPadDeadzone.value = profile.leftPad.deadzone ?? 0.08;
+  controls.leftPadAcceleration.value = profile.leftPad.acceleration ?? 1;
   controls.leftPadClick.checked = Boolean(profile.leftPad.clickRequired);
   controls.rightPadMode.value = profile.rightPad.mode;
   controls.rightPadSensitivity.value = profile.rightPad.sensitivity;
   controls.rightPadDeadzone.value = profile.rightPad.deadzone ?? 0.08;
+  controls.rightPadAcceleration.value = profile.rightPad.acceleration ?? 1;
   controls.rightPadClick.checked = Boolean(profile.rightPad.clickRequired);
   controls.leftPadHaptics.checked = profile.leftPad.hapticsEnabled ?? true;
   controls.rightPadHaptics.checked = profile.rightPad.hapticsEnabled ?? true;
@@ -281,6 +285,7 @@ function readProfile() {
     mode: controls.leftPadMode.value,
     sensitivity: Number(controls.leftPadSensitivity.value),
     deadzone: Number(controls.leftPadDeadzone.value),
+    acceleration: Number(controls.leftPadAcceleration.value),
     clickRequired: controls.leftPadClick.checked,
     hapticsEnabled: controls.leftPadHaptics.checked,
     hapticIntensity: Number(controls.leftHapticIntensity.value)
@@ -289,6 +294,7 @@ function readProfile() {
     mode: controls.rightPadMode.value,
     sensitivity: Number(controls.rightPadSensitivity.value),
     deadzone: Number(controls.rightPadDeadzone.value),
+    acceleration: Number(controls.rightPadAcceleration.value),
     clickRequired: controls.rightPadClick.checked,
     hapticsEnabled: controls.rightPadHaptics.checked,
     hapticIntensity: Number(controls.rightHapticIntensity.value)
@@ -314,6 +320,12 @@ function refreshOutputs() {
   $("#right-pad-sensitivity-value").value = times(controls.rightPadSensitivity.value);
   $("#left-pad-deadzone-value").value = percent(controls.leftPadDeadzone.value);
   $("#right-pad-deadzone-value").value = percent(controls.rightPadDeadzone.value);
+  const acceleration = value => Number(value) === 0 ? "Off" : percent(value);
+  $("#left-pad-acceleration-value").value = acceleration(controls.leftPadAcceleration.value);
+  $("#right-pad-acceleration-value").value = acceleration(controls.rightPadAcceleration.value);
+  // Acceleration only applies to pads in mouse mode.
+  controls.leftPadAcceleration.disabled = controls.leftPadMode.value !== "Mouse";
+  controls.rightPadAcceleration.disabled = controls.rightPadMode.value !== "Mouse";
   $("#left-haptic-value").value = percent(controls.leftHapticIntensity.value);
   $("#right-haptic-value").value = percent(controls.rightHapticIntensity.value);
   $("#gyro-sensitivity-value").value = times(controls.gyroSensitivity.value);

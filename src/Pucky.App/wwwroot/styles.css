@@ -679,6 +679,19 @@ label > span small { text-transform: none; letter-spacing: 0; }
 }
 .profile-actions .danger { margin-left: auto; }
 
+.profile-problems {
+  margin: 12px 20px 0;
+  padding: 8px 10px 8px 26px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.profile-problems li + li { margin-top: 4px; }
+.profile-problems strong { color: var(--accent); font-weight: 600; }
+
 .section-heading {
   margin-top: 22px;
   padding-top: 16px;

@@ -7,6 +7,17 @@ namespace Pucky.App.Profiles;
 
 public sealed class ProfileValidationException(string message) : Exception(message);
 
+/// <summary>
+/// A profile file with a problem. When <see cref="Loaded"/> is true the profile
+/// still works but must be fixed before it can be saved; otherwise the file
+/// could not be used at all.
+/// </summary>
+public sealed record ProfileProblem(string File, string? Id, string? Name, string Error, bool Loaded);
+
+public sealed record ProfileListing(
+    IReadOnlyList<MappingProfile> Profiles,
+    IReadOnlyList<ProfileProblem> Problems);
+
 public sealed class ProfileStore
 {
     public const string DefaultProfileId = "default";
@@ -50,28 +61,35 @@ public sealed class ProfileStore
             await WriteAsync(MappingProfile.Default(), cancellationToken);
         }
 
-        Active = await ReadAsync(PathFor(_settings.Current.ActiveProfileId), cancellationToken)
-                 ?? await ReadAsync(defaultPath, cancellationToken)
+        var activeId = _settings.Current.ActiveProfileId;
+        Active = (IsValidId(activeId) ? (await ReadAsync(PathFor(activeId), cancellationToken)).Profile : null)
+                 ?? (await ReadAsync(defaultPath, cancellationToken)).Profile
                  ?? MappingProfile.Default();
     }
 
-    public async Task<IReadOnlyList<MappingProfile>> ListAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<ProfileListing> ListAsync(CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_directory);
         var profiles = new List<MappingProfile>();
+        var problems = new List<ProfileProblem>();
         foreach (var path in Directory.EnumerateFiles(_directory, "*.json"))
         {
-            var profile = await ReadAsync(path, cancellationToken);
+            var (profile, problem) = await ReadAsync(path, cancellationToken);
             if (profile is not null)
             {
                 profiles.Add(profile);
             }
+            if (problem is not null)
+            {
+                problems.Add(problem);
+            }
         }
-        return profiles
-            .OrderBy(profile => profile.Id != DefaultProfileId)
-            .ThenBy(profile => profile.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
+        return new ProfileListing(
+            profiles
+                .OrderBy(profile => profile.Id != DefaultProfileId)
+                .ThenBy(profile => profile.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray(),
+            problems.OrderBy(problem => problem.File, StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
     /// <summary>Validates, writes, and activates a profile.</summary>
@@ -95,7 +113,7 @@ public sealed class ProfileStore
             return null;
         }
 
-        var profile = await ReadAsync(PathFor(id), cancellationToken);
+        var (profile, _) = await ReadAsync(PathFor(id), cancellationToken);
         if (profile is not null)
         {
             await SetActiveAsync(profile, cancellationToken);
@@ -249,7 +267,14 @@ public sealed class ProfileStore
             Deadzone = Math.Clamp(profile.Gyro.Deadzone, 0, 0.5f)
         },
         KeyMappings = RemoveEmptyKeyBindings(profile.KeyMappings),
-        Layers = profile.Layers ?? []
+        Layers = (profile.Layers ?? [])
+            .Where(layer => layer is not null)
+            .Select(layer => layer with
+            {
+                ButtonMappings = layer.ButtonMappings ?? [],
+                KeyMappings = RemoveEmptyKeyBindings(layer.KeyMappings)
+            })
+            .ToList()
     };
 
     private static PadSettings NormalizePad(PadSettings pad) => pad with
@@ -300,25 +325,47 @@ public sealed class ProfileStore
 
     private string PathFor(string id) => Path.Combine(_directory, $"{id}.json");
 
-    private async Task<MappingProfile?> ReadAsync(
+    /// <summary>
+    /// Reads a profile leniently. Only files that cannot be parsed or are
+    /// missing required sections are rejected; anything else that fails
+    /// validation still loads, with a problem the UI shows, and has to be
+    /// fixed before it can be saved again.
+    /// </summary>
+    private async Task<(MappingProfile? Profile, ProfileProblem? Problem)> ReadAsync(
         string path,
         CancellationToken cancellationToken)
     {
+        var file = Path.GetFileName(path);
+        var fileId = Path.GetFileNameWithoutExtension(path);
         try
         {
             if (!File.Exists(path))
             {
-                return null;
+                return (null, null);
+            }
+            if (!IsValidId(fileId))
+            {
+                return (null, new ProfileProblem(file, null, null,
+                    "File name must be lowercase letters, numbers, dashes, or underscores.", false));
             }
 
-            await using var stream = File.OpenRead(path);
-            var profile = await JsonSerializer.DeserializeAsync<MappingProfile>(
-                stream,
-                _json,
-                cancellationToken);
+            MappingProfile? profile;
+            await using (var stream = File.OpenRead(path))
+            {
+                profile = await JsonSerializer.DeserializeAsync<MappingProfile>(
+                    stream,
+                    _json,
+                    cancellationToken);
+            }
             if (profile is null)
             {
-                return null;
+                return (null, new ProfileProblem(file, fileId, null, "The file is empty.", false));
+            }
+            if (profile.ButtonMappings is null || profile.LeftPad is null ||
+                profile.RightPad is null || profile.Gyro is null)
+            {
+                return (null, new ProfileProblem(file, fileId, profile.Name,
+                    "Profile is missing required sections.", false));
             }
 
             // Profiles written before Quick Access existed get its default.
@@ -337,20 +384,32 @@ public sealed class ProfileStore
 
             // The file name is authoritative so a hand-edited id cannot
             // shadow another profile.
-            var fileId = Path.GetFileNameWithoutExtension(path);
-            if (profile.Id != fileId && IsValidId(fileId))
+            profile = Normalize(profile with { Id = fileId });
+            if (string.IsNullOrWhiteSpace(profile.Name))
             {
-                profile = profile with { Id = fileId };
+                profile = profile with { Name = fileId };
             }
 
-            profile = Normalize(profile);
-            Validate(profile);
-            return profile;
+            try
+            {
+                Validate(profile);
+                return (profile, null);
+            }
+            catch (ProfileValidationException ex)
+            {
+                return (profile, new ProfileProblem(file, fileId, profile.Name, ex.Message, true));
+            }
         }
-        catch (Exception ex) when (ex is IOException or JsonException or
-                                       UnauthorizedAccessException or ProfileValidationException)
+        catch (JsonException ex)
         {
-            return null;
+            var where = ex.LineNumber is { } line ? $" near line {line + 1}" : "";
+            return (null, new ProfileProblem(file, fileId, null,
+                $"The file is not valid profile JSON{where}.", false));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (null, new ProfileProblem(file, fileId, null,
+                $"The file could not be read ({ex.Message}).", false));
         }
     }
 }

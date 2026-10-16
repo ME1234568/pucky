@@ -123,7 +123,9 @@ const specialKeys = [
   "MouseLeft", "MouseRight", "MouseMiddle", "MouseBack", "MouseForward",
   "WheelUp", "WheelDown", "WheelLeft", "WheelRight",
   "MediaPlayPause", "MediaNext", "MediaPrevious", "MediaStop", "VolumeUp", "VolumeDown", "VolumeMute",
-  "PrintScreen", "Pause", "ScrollLock"
+  "PrintScreen", "Pause", "ScrollLock",
+  // Esc cancels key capture, so it is bound from here instead.
+  "Escape"
 ];
 
 let liveSource;
@@ -204,8 +206,24 @@ function renderProfileSelect() {
   $("#delete-profile").disabled = !state.profile || state.profile.id === "default";
 }
 
+function renderProfileProblems(problems) {
+  const list = $("#profile-problems");
+  list.replaceChildren(...problems.map(problem => {
+    const item = document.createElement("li");
+    const title = el("strong", "", problem.name ? `${problem.name} (${problem.file})` : problem.file);
+    const action = problem.loaded
+      ? "It still works, but fix this before saving it."
+      : "It was not loaded. Fix or remove the file in data/profiles.";
+    item.append(title, document.createTextNode(`: ${problem.error} ${action}`));
+    return item;
+  }));
+  list.classList.toggle("hidden", problems.length === 0);
+}
+
 async function loadProfiles(selectId) {
-  state.profiles = await request("/api/profiles");
+  const listing = await request("/api/profiles");
+  state.profiles = listing.profiles;
+  renderProfileProblems(listing.problems ?? []);
   state.profilesLoaded = true;
   const wanted = selectId ?? state.activeProfileId;
   const profile = state.profiles.find(item => item.id === wanted)
@@ -440,7 +458,7 @@ function startCapture(source, button) {
   const pressed = new Set();
   const chord = new Set();
   button.classList.add("capturing");
-  button.textContent = "Press keys…";
+  button.textContent = "Press keys… (Esc to cancel)";
 
   const finish = () => {
     stopCapture();
@@ -450,6 +468,12 @@ function startCapture(source, button) {
   const onKeyDown = event => {
     event.preventDefault();
     event.stopPropagation();
+    if (event.repeat) return;
+    if (event.code === "Escape" && pressed.size === 0) {
+      chord.clear();
+      finish();
+      return;
+    }
     const key = keyCodes[event.code];
     if (!key) return;
     pressed.add(key);
@@ -458,11 +482,18 @@ function startCapture(source, button) {
   };
   const onKeyUp = event => {
     event.preventDefault();
-    pressed.delete(keyCodes[event.code]);
-    // A chord finishes when its last non-modifier key is released, or when
-    // only modifiers were pressed and all of them are released.
-    const hasMain = [...chord].some(key => !modifierKeys.includes(key));
-    if ((hasMain && ![...pressed].some(key => !modifierKeys.includes(key))) || pressed.size === 0) {
+    event.stopPropagation();
+    const key = keyCodes[event.code];
+    // Ignore keys that were already down when capture started, such as the
+    // Enter or Space that activated the button.
+    if (!pressed.has(key)) return;
+    pressed.delete(key);
+    // A chord finishes when its last non-modifier key is released, when a
+    // modifier is released after a main key (macOS drops key-up events while
+    // Cmd is held), or when a modifier-only chord is fully released.
+    const hasMain = [...chord].some(item => !modifierKeys.includes(item));
+    const mainStillDown = [...pressed].some(item => !modifierKeys.includes(item));
+    if ((hasMain && (!mainStillDown || modifierKeys.includes(key))) || pressed.size === 0) {
       finish();
     }
   };
@@ -472,6 +503,18 @@ function startCapture(source, button) {
     event.stopPropagation();
     const mouse = ["MouseLeft", "MouseMiddle", "MouseRight", "MouseBack", "MouseForward"][event.button];
     if (mouse) {
+      // The click that follows this press must not also activate whatever
+      // was under the pointer.
+      const swallow = clickEvent => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+      };
+      window.addEventListener("click", swallow, { capture: true, once: true });
+      window.addEventListener("auxclick", swallow, { capture: true, once: true });
+      setTimeout(() => {
+        window.removeEventListener("click", swallow, { capture: true });
+        window.removeEventListener("auxclick", swallow, { capture: true });
+      }, 1000);
       chord.add(mouse);
       finish();
     }
